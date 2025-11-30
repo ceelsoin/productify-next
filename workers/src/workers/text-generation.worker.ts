@@ -9,6 +9,7 @@ import {
 } from '../core/types';
 import { mongoService } from '../services/mongodb.service';
 import { queueManager } from '../core/queue-manager';
+import { openRouterService } from '../services/openrouter.service';
 
 dotenv.config({ path: join(__dirname, '../../.env') });
 
@@ -58,27 +59,38 @@ export class TextGenerationWorker extends BaseWorker {
   }
 
   /**
-   * Generate viral copy using AI
-   * TODO: Implement actual AI integration (OpenAI/Anthropic)
+   * Generate viral copy using OpenRouter AI (Grok)
    */
   private async generateViralCopy(
     productInfo: { name: string; description?: string },
     config: ViralCopyConfig
   ): Promise<string> {
-    console.log(`[TextGenerationWorker] Generating copy for ${config.platform}...`);
+    console.log(`[TextGenerationWorker] Generating copy for ${config.platform} using Grok...`);
 
-    // Mock implementation - simulate API call
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    try {
+      // Use OpenRouter with Grok model for viral copy generation
+      const copy = await openRouterService.generateViralCopy(
+        productInfo.name,
+        productInfo.description,
+        config.platform,
+        config.tone || 'engaging and exciting'
+      );
 
-    // Generate mock copy based on platform
-    const platformTemplates: Record<string, string> = {
-      instagram: `🔥 Introducing ${productInfo.name}! ${productInfo.description || 'Your new must-have product.'}\n\n✨ Limited time offer - Get yours today!\n\n#${productInfo.name.replace(/\s+/g, '')} #trending #musthave`,
-      facebook: `Exciting news! We're thrilled to introduce ${productInfo.name}.\n\n${productInfo.description || 'This amazing product is perfect for you.'}\n\nClick the link to learn more and shop now!`,
-      twitter: `🚀 ${productInfo.name} is here! ${productInfo.description || 'Game-changing product you need.'}\n\n#${productInfo.name.replace(/\s+/g, '')} #innovation`,
-      linkedin: `We're excited to announce ${productInfo.name}.\n\n${productInfo.description || 'A professional solution designed for excellence.'}\n\nLearn more about how this can benefit your business.`,
-    };
+      console.log(`[TextGenerationWorker] Successfully generated copy (${copy.length} chars)`);
+      return copy;
+    } catch (error) {
+      console.error(`[TextGenerationWorker] OpenRouter error, falling back to template:`, error);
+      
+      // Fallback to template if API fails
+      const platformTemplates: Record<string, string> = {
+        instagram: `🔥 Introducing ${productInfo.name}! ${productInfo.description || 'Your new must-have product.'}\n\n✨ Limited time offer - Get yours today!\n\n#${productInfo.name.replace(/\s+/g, '')} #trending #musthave`,
+        facebook: `Exciting news! We're thrilled to introduce ${productInfo.name}.\n\n${productInfo.description || 'This amazing product is perfect for you.'}\n\nClick the link to learn more and shop now!`,
+        twitter: `🚀 ${productInfo.name} is here! ${productInfo.description || 'Game-changing product you need.'}\n\n#${productInfo.name.replace(/\s+/g, '')} #innovation`,
+        linkedin: `We're excited to announce ${productInfo.name}.\n\n${productInfo.description || 'A professional solution designed for excellence.'}\n\nLearn more about how this can benefit your business.`,
+      };
 
-    return platformTemplates[config.platform] || platformTemplates.instagram;
+      return platformTemplates[config.platform] || platformTemplates.instagram;
+    }
   }
 }
 
