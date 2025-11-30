@@ -50,6 +50,11 @@ export function determinePipeline(items: Array<{ type: string }>): string {
     return 'promotional-video-basic';
   }
 
+  // Múltiplos tipos de texto (viral-copy + product-description)
+  if (types.includes('viral-copy') && types.includes('product-description')) {
+    return 'text-only-multiple';
+  }
+
   // Voice-over apenas
   if (types.includes('voice-over') && types.includes('viral-copy')) {
     return 'voice-over-only';

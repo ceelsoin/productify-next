@@ -137,6 +137,7 @@ export abstract class BaseWorker implements IWorker {
     }
     if (update.result !== undefined) {
       updateFields[`items.${itemIndex}.result`] = update.result;
+      console.log(`[BaseWorker] Saving result for job ${jobId}, item ${itemIndex}:`, JSON.stringify(update.result, null, 2));
     }
     if (update.error !== undefined) {
       updateFields[`items.${itemIndex}.error`] = update.error;
@@ -144,7 +145,8 @@ export abstract class BaseWorker implements IWorker {
 
     updateFields.updatedAt = new Date();
 
-    await Job.findByIdAndUpdate(jobId, { $set: updateFields });
+    const updated = await Job.findByIdAndUpdate(jobId, { $set: updateFields }, { new: true });
+    console.log(`[BaseWorker] Job updated. Result saved:`, updated?.items[itemIndex]?.result ? 'YES' : 'NO');
   }
 
   /**

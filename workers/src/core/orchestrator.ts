@@ -17,9 +17,8 @@ interface PipelineExecution {
   jobId: string;
   pipelineId: string; // ID do pipeline (ex: "viral-copy-only")
   pipeline: Pipeline;
-  completedSteps: Set<JobType>;
+  completedItems: Set<number>; // Track by item index instead of type
   results: Map<JobType, unknown>;
-  stepIndices: Map<JobType, number>;
 }
 
 /**
@@ -72,15 +71,9 @@ class PipelineOrchestrator {
       jobId,
       pipelineId: pipelineId || 'unknown', // Use provided ID or fallback
       pipeline,
-      completedSteps: new Set(),
+      completedItems: new Set(),
       results: new Map(),
-      stepIndices: new Map(),
     };
-
-    // Map job items to step indices
-    job.items.forEach((item: any, index: number) => {
-      execution.stepIndices.set(item.type as JobType, index);
-    });
 
     this.executions.set(jobId, execution);
 
@@ -94,7 +87,7 @@ class PipelineOrchestrator {
   }
 
   /**
-   * Execute all steps that are ready (dependencies satisfied)
+   * Execute all items that are ready (dependencies satisfied)
    */
   private async executeReadySteps(jobId: string): Promise<void> {
     const execution = this.executions.get(jobId);
@@ -103,28 +96,43 @@ class PipelineOrchestrator {
     const job = await Job.findById(jobId);
     if (!job) return;
 
-    for (let i = 0; i < execution.pipeline.steps.length; i++) {
-      const step = execution.pipeline.steps[i];
+    // Iterate through all job items
+    for (let itemIndex = 0; itemIndex < job.items.length; itemIndex++) {
+      const item = job.items[itemIndex];
+      const itemType = item.type as JobType;
+
+      console.log(`[Orchestrator] Checking item ${itemIndex} (${itemType}), status: ${item.status}, completed: ${execution.completedItems.has(itemIndex)}`);
 
       // Skip if already completed or processing
-      if (execution.completedSteps.has(step.type)) continue;
+      if (execution.completedItems.has(itemIndex)) {
+        console.log(`[Orchestrator] Item ${itemIndex} already completed, skipping`);
+        continue;
+      }
+      if (item.status !== JobItemStatus.PENDING) {
+        console.log(`[Orchestrator] Item ${itemIndex} not pending (${item.status}), skipping`);
+        continue;
+      }
 
-      const itemIndex = execution.stepIndices.get(step.type);
-      if (itemIndex === undefined) continue;
+      // Find matching pipeline step for this item type
+      const step = execution.pipeline.steps.find(s => s.type === itemType);
+      if (!step) {
+        console.warn(`[Orchestrator] No pipeline step found for item type ${itemType}`);
+        continue;
+      }
 
-      const item = job.items[itemIndex];
-      if (item.status !== JobItemStatus.PENDING) continue;
-
-      // Check if dependencies are satisfied
+      // Check if dependencies are satisfied (for independent items, this should always be true)
       const dependenciesSatisfied = !step.dependsOn || step.dependsOn.every(dep => 
-        execution.completedSteps.has(dep)
+        execution.completedItems.has(dep)
       );
 
-      if (!dependenciesSatisfied) continue;
+      if (!dependenciesSatisfied) {
+        console.log(`[Orchestrator] Item ${itemIndex} dependencies not satisfied, skipping`);
+        continue;
+      }
 
-      // Execute step
-      console.log(`[Orchestrator] Executing step ${step.type} for job ${jobId}`);
-      await this.executeStep(jobId, step.type, itemIndex, item.config, execution.results);
+      // Execute item
+      console.log(`[Orchestrator] Executing item ${itemIndex} (${itemType}) for job ${jobId}`);
+      await this.executeStep(jobId, itemType, itemIndex, item.config, execution.results);
     }
   }
 
@@ -189,32 +197,30 @@ class PipelineOrchestrator {
     if (!job) return;
 
     const item = job.items[itemIndex];
-    const stepType = item.type as JobType;
+    const itemType = item.type as JobType;
 
     if (success && result.result) {
-      console.log(`[Orchestrator] Step ${stepType} completed successfully for job ${jobId}`);
+      console.log(`[Orchestrator] Item ${itemIndex} (${itemType}) completed successfully for job ${jobId}`);
       
       // Store result
-      execution.completedSteps.add(stepType);
-      execution.results.set(stepType, result.result);
+      execution.completedItems.add(itemIndex);
+      execution.results.set(itemType, result.result);
 
-      // Execute next ready steps
+      // Execute next ready items
       await this.executeReadySteps(jobId);
 
-      // Check if pipeline is complete
-      const allStepsCompleted = execution.pipeline.steps.every(step =>
-        execution.completedSteps.has(step.type)
-      );
+      // Check if all items are complete
+      const allItemsCompleted = execution.completedItems.size === job.items.length;
 
-      if (allStepsCompleted) {
-        console.log(`[Orchestrator] Pipeline completed for job ${jobId}`);
+      if (allItemsCompleted) {
+        console.log(`[Orchestrator] All items completed for job ${jobId}`);
         await Job.findByIdAndUpdate(jobId, {
           $set: { status: JobStatus.COMPLETED, progress: 100, updatedAt: new Date() },
         });
         this.executions.delete(jobId);
       }
     } else {
-      console.error(`[Orchestrator] Step ${stepType} failed for job ${jobId}:`, result.error);
+      console.error(`[Orchestrator] Item ${itemIndex} (${itemType}) failed for job ${jobId}:`, result.error);
       
       // Mark job as failed
       await Job.findByIdAndUpdate(jobId, {
@@ -258,16 +264,16 @@ class PipelineOrchestrator {
    */
   getExecutionStatus(jobId: string): {
     running: boolean;
-    completedSteps: JobType[];
-    totalSteps: number;
+    completedItems: number[];
+    totalItems: number;
   } | null {
     const execution = this.executions.get(jobId);
     if (!execution) return null;
 
     return {
       running: true,
-      completedSteps: Array.from(execution.completedSteps),
-      totalSteps: execution.pipeline.steps.length,
+      completedItems: Array.from(execution.completedItems),
+      totalItems: execution.completedItems.size,
     };
   }
 }

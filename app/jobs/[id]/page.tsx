@@ -76,6 +76,7 @@ export default function JobPage() {
         throw new Error(data.error || 'Erro ao carregar trabalho');
       }
 
+      console.log('📥 Job recebido:', JSON.stringify(data.job, null, 2));
       setJob(data.job);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar trabalho');
@@ -315,7 +316,7 @@ export default function JobPage() {
                           )}
                           {item.result.text && (
                             <div className="rounded bg-background-secondary p-3">
-                              <p className="text-sm text-text-primary">
+                              <p className="text-sm text-text-primary whitespace-pre-wrap">
                                 {item.result.text}
                               </p>
                             </div>

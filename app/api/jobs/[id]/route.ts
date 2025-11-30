@@ -21,7 +21,7 @@ export async function GET(
     const { id } = await params;
 
     // Buscar job
-    const job = await Job.findById(id);
+    const job = await Job.findById(id).lean();
 
     if (!job) {
       return NextResponse.json(
@@ -34,6 +34,8 @@ export async function GET(
     if (job.user !== session.user.id) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
     }
+
+    console.log('📤 Job sendo enviado:', JSON.stringify(job, null, 2));
 
     return NextResponse.json({ job }, { status: 200 });
   } catch (error) {
