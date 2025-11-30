@@ -5,20 +5,20 @@ import { BaseWorker } from '../core/base-worker';
 import {
   WorkerJobData,
   WorkerJobResult,
-  ViralCopyConfig,
-  ProductDescriptionConfig,
+  JobType,
 } from '../core/types';
 import { mongoService } from '../services/mongodb.service';
 import { queueManager } from '../core/queue-manager';
 import { langChainAIService } from '../services/langchain-ai.service';
-import { buildViralCopyPrompt } from '../prompts/viral-copy.prompt';
-import { buildProductDescriptionPrompt } from '../prompts/product-description.prompt';
+import { getPipeline } from '../core/pipelines';
+import { PromptTemplateService } from '../services/prompt-template.service';
 
 dotenv.config({ path: join(__dirname, '../../.env') });
 
 /**
- * Text Generation Worker (VST)
- * Generates viral copy for social media platforms
+ * Text Generation Worker (Generic)
+ * Generates text content based on pipeline prompt configuration
+ * Supports: viral copy, product descriptions, voice-over scripts, etc.
  */
 export class TextGenerationWorker extends BaseWorker {
   queueName = 'text-queue';
@@ -27,57 +27,45 @@ export class TextGenerationWorker extends BaseWorker {
   async process(job: BullJob<WorkerJobData>): Promise<WorkerJobResult> {
     this.validateJobData(job);
 
-    const { jobId, itemIndex, config, productInfo } = job.data;
+    const { jobId, itemIndex, config, productInfo, pipelineName, itemType } = job.data;
 
     console.log(`[TextGenerationWorker] Processing job ${jobId}, item ${itemIndex}`);
+    console.log(`[TextGenerationWorker] Type: ${itemType}, Pipeline: ${pipelineName}`);
     console.log(`[TextGenerationWorker] Config:`, config);
 
     try {
       await this.updateProgress(jobId, itemIndex, 20);
 
-      let text: string;
-      let resultType: string;
-
-      // Check if it's viral copy or product description
-      if ('platform' in config) {
-        // Viral Copy
-        const viralConfig = config as ViralCopyConfig;
-        text = await this.generateViralCopy(productInfo, viralConfig);
-        resultType = 'viral_copy';
-        
-        await this.updateProgress(jobId, itemIndex, 100);
-
-        return {
-          jobId,
-          itemIndex,
-          success: true,
-          result: {
-            type: resultType,
-            text,
-            platform: viralConfig.platform,
-            wordCount: text.split(/\s+/).length,
-          },
-        };
-      } else {
-        // Product Description
-        const descConfig = config as ProductDescriptionConfig;
-        text = await this.generateProductDescription(productInfo, descConfig);
-        resultType = 'product_description';
-        
-        await this.updateProgress(jobId, itemIndex, 100);
-
-        return {
-          jobId,
-          itemIndex,
-          success: true,
-          result: {
-            type: resultType,
-            text,
-            style: descConfig.style || 'marketplace',
-            wordCount: text.split(/\s+/).length,
-          },
-        };
+      // Get pipeline configuration
+      const pipeline = getPipeline(pipelineName || this.inferPipeline(itemType as JobType));
+      
+      if (!pipeline) {
+        throw new Error(`Pipeline not found: ${pipelineName}`);
       }
+
+      // Find the step for this job type
+      const step = pipeline.steps.find(s => s.type === itemType);
+      
+      if (!step || !step.promptConfig) {
+        throw new Error(`No prompt configuration found for ${itemType} in pipeline ${pipelineName}`);
+      }
+
+      // Generate text using pipeline prompt configuration
+      const text = await this.generateText(productInfo, config, step.promptConfig);
+      
+      await this.updateProgress(jobId, itemIndex, 100);
+
+      return {
+        jobId,
+        itemIndex,
+        success: true,
+        result: {
+          type: itemType as string,
+          text,
+          wordCount: text.split(/\s+/).length,
+          ...this.extractResultMetadata(itemType as JobType, config),
+        },
+      };
     } catch (error) {
       console.error(`[TextGenerationWorker] Error:`, error);
       return {
@@ -90,81 +78,85 @@ export class TextGenerationWorker extends BaseWorker {
   }
 
   /**
-   * Generate viral copy using LangChain with OpenAI
+   * Infer pipeline name from job type (fallback)
    */
-  private async generateViralCopy(
-    productInfo: { name: string; description?: string },
-    config: ViralCopyConfig
-  ): Promise<string> {
-    console.log(`[TextGenerationWorker] Generating viral copy for ${config.platform}...`);
-
-    try {
-      // Build prompt using dedicated prompt builder
-      const { system, user } = buildViralCopyPrompt({
-        productName: productInfo.name,
-        productDescription: productInfo.description,
-        platform: config.platform,
-        tone: config.tone,
-        includeEmojis: config.includeEmojis,
-        includeHashtags: config.includeHashtags,
-        language: config.language,
-      });
-
-      // Use generic LangChain service
-      const copy = await langChainAIService.generateText(system, user);
-
-      console.log(`[TextGenerationWorker] Successfully generated viral copy (${copy.length} chars)`);
-      return copy;
-    } catch (error) {
-      console.error(`[TextGenerationWorker] LangChain error, falling back to template:`, error);
-      
-      // Fallback to template if API fails
-      const emoji = config.includeEmojis !== false ? '🔥 ' : '';
-      const hashtag = config.includeHashtags !== false ? `#${productInfo.name.replace(/\s+/g, '')}` : '';
-      
-      const platformTemplates: Record<string, string> = {
-        instagram: `${emoji}Introducing ${productInfo.name}! ${productInfo.description || 'Your new must-have product.'}\n\n✨ Limited time offer - Get yours today!\n\n${hashtag} #trending #musthave`,
-        facebook: `Exciting news! We're thrilled to introduce ${productInfo.name}.\n\n${productInfo.description || 'This amazing product is perfect for you.'}\n\nClick the link to learn more and shop now!`,
-        twitter: `${emoji}${productInfo.name} is here! ${productInfo.description || 'Game-changing product you need.'}\n\n${hashtag} #innovation`,
-        linkedin: `We're excited to announce ${productInfo.name}.\n\n${productInfo.description || 'A professional solution designed for excellence.'}\n\nLearn more about how this can benefit your business.`,
-      };
-
-      return platformTemplates[config.platform] || platformTemplates.instagram;
+  private inferPipeline(jobType: JobType): string {
+    switch (jobType) {
+      case JobType.VIRAL_COPY:
+        return 'viral-copy-only';
+      case JobType.PRODUCT_DESCRIPTION:
+        return 'product-description-only';
+      default:
+        return 'viral-copy-only';
     }
   }
 
   /**
-   * Generate product description using LangChain with OpenAI
+   * Extract metadata for result based on job type
    */
-  private async generateProductDescription(
+  private extractResultMetadata(jobType: JobType, config: any): Record<string, any> {
+    switch (jobType) {
+      case JobType.VIRAL_COPY:
+        return {
+          platform: config.platform || 'instagram',
+        };
+      case JobType.PRODUCT_DESCRIPTION:
+        return {
+          style: config.style || 'marketplace',
+          targetAudience: config.targetAudience || 'general',
+        };
+      default:
+        return {};
+    }
+  }
+
+  /**
+   * Generate text using pipeline prompt configuration (Generic)
+   */
+  private async generateText(
     productInfo: { name: string; description?: string },
-    config: ProductDescriptionConfig
+    config: any,
+    promptConfig: { systemPrompt: string; userPromptTemplate: string; variables: string[] }
   ): Promise<string> {
-    console.log(`[TextGenerationWorker] Generating product description (${config.style || 'marketplace'})...`);
+    console.log(`[TextGenerationWorker] Generating text with prompt template...`);
 
     try {
-      // Build prompt using dedicated prompt builder
-      const { system, user } = buildProductDescriptionPrompt({
+      // Prepare variables for template rendering
+      const variables = {
         productName: productInfo.name,
-        productDescription: productInfo.description,
-        targetAudience: config.targetAudience,
-        includeEmojis: config.includeEmojis,
-        language: config.language,
-        style: config.style,
-      });
+        productDescription: productInfo.description || '',
+        ...config, // Merge all config values as variables
+      };
 
-      // Use generic LangChain service
-      const description = await langChainAIService.generateText(system, user);
+      // Render prompts using template engine
+      const systemPrompt = PromptTemplateService.render(promptConfig.systemPrompt, variables);
+      const userPrompt = PromptTemplateService.render(promptConfig.userPromptTemplate, variables);
 
-      console.log(`[TextGenerationWorker] Successfully generated description (${description.length} chars)`);
-      return description;
+      console.log(`[TextGenerationWorker] System Prompt (${systemPrompt.length} chars)`);
+      console.log(`[TextGenerationWorker] User Prompt (${userPrompt.length} chars)`);
+
+      // Use LangChain service to generate text
+      const text = await langChainAIService.generateText(systemPrompt, userPrompt);
+
+      console.log(`[TextGenerationWorker] Successfully generated text (${text.length} chars)`);
+      return text;
     } catch (error) {
-      console.error(`[TextGenerationWorker] LangChain error, falling back to template:`, error);
+      console.error(`[TextGenerationWorker] LangChain error:`, error);
       
       // Fallback to simple template if API fails
-      const emoji = config.includeEmojis ? '✨ ' : '';
-      return `${emoji}${productInfo.name}\n\n${productInfo.description || 'Premium quality product designed for your needs.'}\n\nKey Features:\n• High quality materials\n• Professional design\n• Great value\n\nOrder now and experience the difference!`;
+      return this.getFallbackTemplate(productInfo, config);
     }
+  }
+
+  /**
+   * Get fallback template when AI generation fails
+   */
+  private getFallbackTemplate(
+    productInfo: { name: string; description?: string },
+    config: any
+  ): string {
+    const emoji = config.includeEmojis !== false ? '✨ ' : '';
+    return `${emoji}${productInfo.name}\n\n${productInfo.description || 'Premium quality product.'}\n\nDiscover more about this amazing product!`;
   }
 }
 

@@ -375,20 +375,7 @@ export default function JobPage() {
               </div>
             </div>
 
-            {/* Development Info */}
-            {process.env.NODE_ENV === 'development' && (
-              // <div className="rounded-2xl border border-blue-500/50 bg-blue-500/10 p-4">
-              //   <p className="mb-2 text-sm font-semibold text-blue-400">
-              //     🔧 Modo Desenvolvimento
-              //   </p>
-              //   <p className="text-xs text-text-tertiary">
-              //     Job ID: {job._id}
-              //   </p>
-              //   <p className="text-xs text-text-tertiary">
-              //     O processamento real será implementado em breve.
-              //   </p>
-              // </div>
-            )}
+           
           </div>
         </div>
       </main>
