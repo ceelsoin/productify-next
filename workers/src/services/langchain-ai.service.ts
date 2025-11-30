@@ -27,82 +27,38 @@ class LangChainAIService {
   }
 
   /**
-   * Generate viral copy for social media
+   * Generate text using a custom prompt
+   * This is a generic method that can be used for any text generation task
    */
-  async generateViralCopy(
-    productName: string,
-    productDescription: string | undefined,
-    platform: string,
-    tone?: string
-  ): Promise<string> {
+  async generateText(systemPrompt: string, userPrompt: string): Promise<string> {
     const apiKey = process.env.OPENAI_API_KEY;
     
     if (!apiKey) {
-      console.warn('[LangChain] API key not set, returning mock response');
-      return this.getMockResponse(platform, productName);
+      console.warn('[LangChain] API key not set, cannot generate text');
+      throw new Error('OpenAI API key not configured');
     }
 
     try {
-      console.log(`[LangChain] Generating ${platform} copy for: ${productName}`);
+      console.log('[LangChain] Generating text with custom prompt');
 
       const prompt = ChatPromptTemplate.fromMessages([
-        [
-          'system',
-          `You are an expert social media copywriter specializing in creating viral, engaging content for {platform}. 
-Your copy should be attention-grabbing, authentic, and optimized for {platform}'s audience and format.`,
-        ],
-        [
-          'user',
-          `Create compelling {platform} copy for this product:
-
-Product Name: {productName}
-{productDescription}
-
-Requirements:
-- Platform: {platform}
-- Tone: {tone}
-- Include relevant hashtags for {platform}
-- Keep it concise and impactful
-- Focus on benefits and value proposition
-- Use emojis appropriately for {platform}
-
-Generate the complete {platform} post now:`,
-        ],
+        ['system', systemPrompt],
+        ['user', userPrompt],
       ]);
 
       const chain = prompt.pipe(this.model);
-
-      const result = await chain.invoke({
-        platform,
-        productName,
-        productDescription: productDescription ? `Description: ${productDescription}` : '',
-        tone: tone || 'engaging and exciting',
-      });
+      const result = await chain.invoke({});
 
       const content = result.content.toString();
-      console.log(`[LangChain] Generated copy (${content.length} chars)`);
+      console.log(`[LangChain] Generated text (${content.length} chars)`);
 
       return content;
     } catch (error) {
       console.error('[LangChain] Error:', error);
-      console.log('[LangChain] Falling back to mock response');
-      return this.getMockResponse(platform, productName);
+      throw new Error(`LangChain error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  /**
-   * Mock response for testing without API key
-   */
-  private getMockResponse(platform: string, productName: string): string {
-    const templates: Record<string, string> = {
-      instagram: `🔥 Introducing ${productName}! Your new must-have product.\n\n✨ Limited time offer - Get yours today!\n\n#${productName.replace(/\s+/g, '')} #trending #musthave`,
-      facebook: `Exciting news! We're thrilled to introduce ${productName}.\n\nThis amazing product is perfect for you.\n\nClick the link to learn more and shop now!`,
-      twitter: `🚀 ${productName} is here! Game-changing product you need.\n\n#${productName.replace(/\s+/g, '')} #innovation`,
-      linkedin: `We're excited to announce ${productName}.\n\nA professional solution designed for excellence.\n\nLearn more about how this can benefit your business.`,
-    };
-
-    return templates[platform] || templates.instagram;
-  }
 }
 
 export const langChainAIService = new LangChainAIService();

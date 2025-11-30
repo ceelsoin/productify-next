@@ -44,23 +44,38 @@ interface VoiceOption {
 interface GenerationConfig {
   enhancedImages?: {
     scenario: string;
+    language?: string;
   };
   promotionalVideo?: {
     music: boolean;
     narration: boolean;
     subtitles: boolean;
     template: string;
+    language?: string;
   };
   viralCopy?: {
+    platform: string;
     tone: string;
-    objective: string;
+    includeEmojis: boolean;
+    includeHashtags: boolean;
+    language: string;
+  };
+  productDescription?: {
     style: string;
+    targetAudience: string;
+    includeEmojis: boolean;
+    language: string;
   };
   voiceOver?: {
     voice: string;
     tone: string;
     objective: string;
     speed: number;
+    language: string;
+  };
+  captions?: {
+    language: string;
+    format: string;
   };
 }
 
@@ -86,23 +101,40 @@ export default function GeneratePage() {
 
   // Generation configurations
   const [config, setConfig] = useState<GenerationConfig>({
-    enhancedImages: { scenario: 'table' },
+    enhancedImages: { 
+      scenario: 'table',
+      language: 'pt-BR',
+    },
     promotionalVideo: {
       music: true,
       narration: false,
       subtitles: true,
       template: 'template-1',
+      language: 'pt-BR',
     },
     viralCopy: {
+      platform: 'instagram',
       tone: 'professional',
-      objective: 'sell',
-      style: 'persuasive',
+      includeEmojis: true,
+      includeHashtags: true,
+      language: 'pt-BR',
+    },
+    productDescription: {
+      style: 'marketplace',
+      targetAudience: 'general',
+      includeEmojis: false,
+      language: 'pt-BR',
     },
     voiceOver: {
       voice: 'pt-BR-female-1',
       tone: 'enthusiastic',
       objective: 'inform',
       speed: 1.0,
+      language: 'pt-BR',
+    },
+    captions: {
+      language: 'pt-BR',
+      format: 'srt',
     },
   });
 
@@ -184,6 +216,25 @@ export default function GeneratePage() {
     { id: 'pt-BR-female-2', name: 'Beatriz (Feminina)', gender: 'female', language: 'pt-BR' },
     { id: 'pt-BR-male-1', name: 'Carlos (Masculina)', gender: 'male', language: 'pt-BR' },
     { id: 'pt-BR-male-2', name: 'Daniel (Masculina)', gender: 'male', language: 'pt-BR' },
+  ];
+
+  // Available languages
+  const languageOptions = [
+    { code: 'pt-BR', name: 'Português (Brasil)' },
+    { code: 'en-US', name: 'English (US)' },
+    { code: 'es-ES', name: 'Español' },
+    { code: 'fr-FR', name: 'Français' },
+    { code: 'de-DE', name: 'Deutsch' },
+    { code: 'it-IT', name: 'Italiano' },
+  ];
+
+  // Social media platforms
+  const platformOptions = [
+    { id: 'instagram', name: 'Instagram' },
+    { id: 'facebook', name: 'Facebook' },
+    { id: 'twitter', name: 'Twitter/X' },
+    { id: 'linkedin', name: 'LinkedIn' },
+    { id: 'tiktok', name: 'TikTok' },
   ];
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -356,11 +407,19 @@ export default function GeneratePage() {
     },
     {
       id: 'viral-copy',
-      name: 'Copy Viral',
-      description: 'Legendas e descrições otimizadas para vendas',
+      name: 'Copy Viral para Redes Sociais',
+      description: 'Copy otimizado para Instagram, Facebook, Twitter, etc.',
       icon: FileText,
       credits: 5,
       color: 'from-orange-500 to-red-500',
+    },
+    {
+      id: 'product-description',
+      name: 'Descrição de Produto',
+      description: 'Descrição otimizada para marketplaces e ecommerces',
+      icon: FileText,
+      credits: 5,
+      color: 'from-yellow-500 to-orange-500',
     },
     {
       id: 'voice-over',
@@ -863,8 +922,27 @@ export default function GeneratePage() {
                               <div className="space-y-4">
                                 <h4 className="flex items-center gap-2 text-sm font-medium text-text-primary">
                                   <Info className="h-4 w-4" />
-                                  Configurações de Copy
+                                  Configurações de Copy para Redes Sociais
                                 </h4>
+
+                                <div>
+                                  <label className="mb-2 block text-sm text-text-secondary">
+                                    Plataforma
+                                  </label>
+                                  <select
+                                    value={config.viralCopy?.platform}
+                                    onChange={e =>
+                                      updateConfig('viralCopy', 'platform', e.target.value)
+                                    }
+                                    className="w-full rounded-lg border border-border bg-background px-4 py-2 text-text-primary focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                                  >
+                                    {platformOptions.map(platform => (
+                                      <option key={platform.id} value={platform.id}>
+                                        {platform.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
 
                                 <div>
                                   <label className="mb-2 block text-sm text-text-secondary">
@@ -881,47 +959,163 @@ export default function GeneratePage() {
                                     <option value="casual">Casual</option>
                                     <option value="enthusiastic">Entusiasmado</option>
                                     <option value="humorous">Humorístico</option>
+                                    <option value="friendly">Amigável</option>
+                                    <option value="luxury">Luxo</option>
                                   </select>
                                 </div>
 
                                 <div>
                                   <label className="mb-2 block text-sm text-text-secondary">
-                                    Objetivo
+                                    Idioma
                                   </label>
                                   <select
-                                    value={config.viralCopy?.objective}
+                                    value={config.viralCopy?.language}
                                     onChange={e =>
-                                      updateConfig(
-                                        'viralCopy',
-                                        'objective',
-                                        e.target.value
-                                      )
+                                      updateConfig('viralCopy', 'language', e.target.value)
                                     }
                                     className="w-full rounded-lg border border-border bg-background px-4 py-2 text-text-primary focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
                                   >
-                                    <option value="sell">Vender</option>
-                                    <option value="inform">Informar</option>
-                                    <option value="engage">Engajar</option>
-                                    <option value="educate">Educar</option>
+                                    {languageOptions.map(lang => (
+                                      <option key={lang.code} value={lang.code}>
+                                        {lang.name}
+                                      </option>
+                                    ))}
                                   </select>
                                 </div>
+
+                                <div className="flex items-center justify-between">
+                                  <label className="text-sm text-text-secondary">
+                                    Incluir Emojis
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      updateConfig('viralCopy', 'includeEmojis', !config.viralCopy?.includeEmojis)
+                                    }
+                                    className={`relative h-6 w-11 rounded-full transition-colors ${
+                                      config.viralCopy?.includeEmojis
+                                        ? 'bg-primary-500'
+                                        : 'bg-gray-600'
+                                    }`}
+                                  >
+                                    <span
+                                      className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform ${
+                                        config.viralCopy?.includeEmojis ? 'translate-x-5' : ''
+                                      }`}
+                                    />
+                                  </button>
+                                </div>
+
+                                <div className="flex items-center justify-between">
+                                  <label className="text-sm text-text-secondary">
+                                    Incluir Hashtags
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      updateConfig('viralCopy', 'includeHashtags', !config.viralCopy?.includeHashtags)
+                                    }
+                                    className={`relative h-6 w-11 rounded-full transition-colors ${
+                                      config.viralCopy?.includeHashtags
+                                        ? 'bg-primary-500'
+                                        : 'bg-gray-600'
+                                    }`}
+                                  >
+                                    <span
+                                      className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform ${
+                                        config.viralCopy?.includeHashtags ? 'translate-x-5' : ''
+                                      }`}
+                                    />
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Product Description Config */}
+                            {option.id === 'product-description' && (
+                              <div className="space-y-4">
+                                <h4 className="flex items-center gap-2 text-sm font-medium text-text-primary">
+                                  <Info className="h-4 w-4" />
+                                  Configurações de Descrição de Produto
+                                </h4>
 
                                 <div>
                                   <label className="mb-2 block text-sm text-text-secondary">
                                     Estilo
                                   </label>
                                   <select
-                                    value={config.viralCopy?.style}
+                                    value={config.productDescription?.style}
                                     onChange={e =>
-                                      updateConfig('viralCopy', 'style', e.target.value)
+                                      updateConfig('productDescription', 'style', e.target.value)
                                     }
                                     className="w-full rounded-lg border border-border bg-background px-4 py-2 text-text-primary focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
                                   >
-                                    <option value="persuasive">Persuasivo</option>
-                                    <option value="storytelling">Storytelling</option>
-                                    <option value="direct">Direto</option>
-                                    <option value="emotional">Emocional</option>
+                                    <option value="marketplace">Marketplace (Amazon, Mercado Livre)</option>
+                                    <option value="ecommerce">Ecommerce (Loja Online)</option>
+                                    <option value="professional">Profissional (B2B)</option>
                                   </select>
+                                </div>
+
+                                <div>
+                                  <label className="mb-2 block text-sm text-text-secondary">
+                                    Público-Alvo
+                                  </label>
+                                  <select
+                                    value={config.productDescription?.targetAudience}
+                                    onChange={e =>
+                                      updateConfig('productDescription', 'targetAudience', e.target.value)
+                                    }
+                                    className="w-full rounded-lg border border-border bg-background px-4 py-2 text-text-primary focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                                  >
+                                    <option value="general">Público Geral</option>
+                                    <option value="young-adults">Jovens Adultos</option>
+                                    <option value="professionals">Profissionais</option>
+                                    <option value="parents">Pais e Mães</option>
+                                    <option value="tech-savvy">Entusiastas de Tecnologia</option>
+                                    <option value="luxury">Consumidores Premium</option>
+                                  </select>
+                                </div>
+
+                                <div>
+                                  <label className="mb-2 block text-sm text-text-secondary">
+                                    Idioma
+                                  </label>
+                                  <select
+                                    value={config.productDescription?.language}
+                                    onChange={e =>
+                                      updateConfig('productDescription', 'language', e.target.value)
+                                    }
+                                    className="w-full rounded-lg border border-border bg-background px-4 py-2 text-text-primary focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                                  >
+                                    {languageOptions.map(lang => (
+                                      <option key={lang.code} value={lang.code}>
+                                        {lang.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+
+                                <div className="flex items-center justify-between">
+                                  <label className="text-sm text-text-secondary">
+                                    Incluir Emojis
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      updateConfig('productDescription', 'includeEmojis', !config.productDescription?.includeEmojis)
+                                    }
+                                    className={`relative h-6 w-11 rounded-full transition-colors ${
+                                      config.productDescription?.includeEmojis
+                                        ? 'bg-primary-500'
+                                        : 'bg-gray-600'
+                                    }`}
+                                  >
+                                    <span
+                                      className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform ${
+                                        config.productDescription?.includeEmojis ? 'translate-x-5' : ''
+                                      }`}
+                                    />
+                                  </button>
                                 </div>
                               </div>
                             )}
@@ -968,6 +1162,25 @@ export default function GeneratePage() {
                                     <option value="calm">Calmo</option>
                                     <option value="energetic">Energético</option>
                                     <option value="serious">Sério</option>
+                                  </select>
+                                </div>
+
+                                <div>
+                                  <label className="mb-2 block text-sm text-text-secondary">
+                                    Idioma
+                                  </label>
+                                  <select
+                                    value={config.voiceOver?.language}
+                                    onChange={e =>
+                                      updateConfig('voiceOver', 'language', e.target.value)
+                                    }
+                                    className="w-full rounded-lg border border-border bg-background px-4 py-2 text-text-primary focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                                  >
+                                    {languageOptions.map(lang => (
+                                      <option key={lang.code} value={lang.code}>
+                                        {lang.name}
+                                      </option>
+                                    ))}
                                   </select>
                                 </div>
 

@@ -61,6 +61,18 @@ export interface ViralCopyConfig {
   tone?: string;
   length?: 'short' | 'medium' | 'long';
   includeHashtags?: boolean;
+  includeEmojis?: boolean;
+  language?: string;
+}
+
+/**
+ * Configuration for product description
+ */
+export interface ProductDescriptionConfig {
+  targetAudience?: string;
+  includeEmojis?: boolean;
+  language?: string;
+  style?: 'marketplace' | 'ecommerce' | 'professional';
 }
 
 /**
@@ -74,13 +86,23 @@ export interface VoiceOverConfig {
 }
 
 /**
+ * Configuration for captions
+ */
+export interface CaptionsConfig {
+  language?: string;
+  format?: 'srt' | 'vtt' | 'txt';
+}
+
+/**
  * Union type for all configs
  */
 export type JobItemConfig = 
   | EnhancedImagesConfig 
   | PromotionalVideoConfig 
   | ViralCopyConfig 
-  | VoiceOverConfig;
+  | ProductDescriptionConfig
+  | VoiceOverConfig
+  | CaptionsConfig;
 
 /**
  * Job item (from MongoDB)
