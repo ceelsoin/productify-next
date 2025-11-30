@@ -71,6 +71,8 @@ export default function GeneratePage() {
   const [generationType, setGenerationType] = useState<string[]>([]);
   const [expandedOptions, setExpandedOptions] = useState<string[]>([]);
   const [isPlayingVoicePreview, setIsPlayingVoicePreview] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   
   // Product information
   const [productInfo, setProductInfo] = useState({
@@ -250,6 +252,89 @@ export default function GeneratePage() {
   const stopVoicePreview = () => {
     window.speechSynthesis.cancel();
     setIsPlayingVoicePreview(false);
+  };
+
+  const handleSubmit = async () => {
+    if (!selectedFile || !productInfo.name || generationType.length === 0) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setSubmitError('');
+
+    try {
+      // Preparar FormData
+      const formData = new FormData();
+      
+      // Adicionar imagem
+      formData.append('image', selectedFile);
+      
+      // Adicionar informações do produto
+      formData.append('productName', productInfo.name);
+      if (productInfo.description) {
+        formData.append('productDescription', productInfo.description);
+      }
+      if (productInfo.height) {
+        formData.append('height', productInfo.height);
+      }
+      if (productInfo.width) {
+        formData.append('width', productInfo.width);
+      }
+      if (productInfo.depth) {
+        formData.append('depth', productInfo.depth);
+      }
+      if (productInfo.weight) {
+        formData.append('weight', productInfo.weight);
+      }
+      
+      // Preparar itens de geração com suas configurações
+      const items = generationType.map(type => {
+        const option = generationOptions.find(opt => opt.id === type);
+        
+        let itemConfig: any = {};
+        
+        // Adicionar configurações específicas de cada tipo
+        if (type === 'enhanced-images') {
+          itemConfig = config.enhancedImages || {};
+        } else if (type === 'promotional-video') {
+          itemConfig = config.promotionalVideo || {};
+        } else if (type === 'viral-copy') {
+          itemConfig = config.viralCopy || {};
+        } else if (type === 'voice-over') {
+          itemConfig = config.voiceOver || {};
+        }
+        
+        return {
+          type,
+          credits: option?.credits || 0,
+          config: itemConfig,
+        };
+      });
+      
+      formData.append('items', JSON.stringify(items));
+      
+      // Enviar para API
+      const response = await fetch('/api/jobs/create', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao criar trabalho');
+      }
+
+      // Sucesso! Redirecionar para página de status do job
+      window.location.href = `/jobs/${data.job.id}`;
+    } catch (error) {
+      console.error('Erro ao submeter:', error);
+      setSubmitError(
+        error instanceof Error ? error.message : 'Erro ao criar trabalho'
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const generationOptions = [
@@ -1001,24 +1086,34 @@ export default function GeneratePage() {
                   </div>
                 )}
 
+                {submitError && (
+                  <div className="mb-4 rounded-lg border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-400">
+                    {submitError}
+                  </div>
+                )}
+
                 <button
+                  onClick={handleSubmit}
                   disabled={
                     !selectedFile ||
                     !productInfo.name ||
                     generationType.length === 0 ||
-                    !hasEnoughCredits
+                    !hasEnoughCredits ||
+                    isSubmitting
                   }
                   className="w-full rounded-lg bg-gradient-cta py-4 font-semibold text-white shadow-glow-primary transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100"
                 >
-                  {!selectedFile
-                    ? 'Faça upload de uma foto'
-                    : !productInfo.name
-                      ? 'Preencha o nome do produto'
-                      : generationType.length === 0
-                        ? 'Selecione pelo menos uma opção'
-                        : !hasEnoughCredits
-                          ? 'Créditos insuficientes'
-                          : 'Gerar Conteúdo'}
+                  {isSubmitting
+                    ? 'Criando trabalho...'
+                    : !selectedFile
+                      ? 'Faça upload de uma foto'
+                      : !productInfo.name
+                        ? 'Preencha o nome do produto'
+                        : generationType.length === 0
+                          ? 'Selecione pelo menos uma opção'
+                          : !hasEnoughCredits
+                            ? 'Créditos insuficientes'
+                            : 'Gerar Conteúdo'}
                 </button>
               </div>
             </div>

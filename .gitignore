@@ -30,7 +30,7 @@ next-env.d.ts
 /.remotion/
 
 # Media files
-/uploads/
+/public/uploads/
 /tmp/
 *.mp4
 *.mp3
