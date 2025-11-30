@@ -22,10 +22,10 @@ class MongoDBService {
       await mongoose.connect(MONGODB_URI);
       this.connected = true;
       console.log('[MongoDB] Connected successfully');
-      console.log('[MongoDB] URI (masked):', MONGODB_URI.replace(/:[^:@]+@/, ':****@'));
-      console.log('[MongoDB] Connection host:', mongoose.connection.host);
-      console.log('[MongoDB] Database:', mongoose.connection.db?.databaseName);
-      console.log('[MongoDB] Collections:', await mongoose.connection.db?.listCollections().toArray());
+      // console.log('[MongoDB] URI (masked):', MONGODB_URI.replace(/:[^:@]+@/, ':****@'));
+      // console.log('[MongoDB] Connection host:', mongoose.connection.host);
+      // console.log('[MongoDB] Database:', mongoose.connection.db?.databaseName);
+      // console.log('[MongoDB] Collections:', await mongoose.connection.db?.listCollections().toArray());
     } catch (error) {
       console.error('[MongoDB] Connection failed:', error);
       throw error;

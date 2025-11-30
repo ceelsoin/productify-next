@@ -1,30 +1,46 @@
 import { Schema, model, models } from 'mongoose';
 
 export interface IJobItem {
-  type: 'enhanced-images' | 'promotional-video' | 'viral-copy' | 'voice-over';
+  type: 'enhanced-images' | 'promotional-video' | 'viral-copy' | 'product-description' | 'voice-over' | 'captions';
   credits: number;
   config?: {
     // Enhanced Images Config
     scenario?: string;
+    language?: string;
     // Promotional Video Config
     music?: boolean;
     narration?: boolean;
     subtitles?: boolean;
     template?: string;
     // Viral Copy Config
+    platform?: string;
     tone?: string;
-    objective?: string;
+    includeEmojis?: boolean;
+    includeHashtags?: boolean;
+    // Product Description Config
     style?: string;
+    targetAudience?: string;
     // Voice Over Config
     voice?: string;
+    objective?: string;
     speed?: number;
+    // Captions Config
+    format?: string;
   };
   status: 'pending' | 'processing' | 'completed' | 'failed';
   result?: {
     // URLs dos arquivos gerados
     files?: string[];
-    // Texto gerado (para viral copy)
+    // Texto gerado (para viral copy e product description)
     text?: string;
+    // Tipo de resultado (para diferenciar viral copy de product description)
+    type?: string;
+    // Platform (para viral copy)
+    platform?: string;
+    // Style (para product description)
+    style?: string;
+    // Contagem de palavras
+    wordCount?: number;
     // Mensagem de erro (se falhou)
     error?: string;
   };
@@ -68,7 +84,7 @@ export interface IJob {
 const JobItemSchema = new Schema<IJobItem>({
   type: {
     type: String,
-    enum: ['enhanced-images', 'promotional-video', 'viral-copy', 'voice-over'],
+    enum: ['enhanced-images', 'promotional-video', 'viral-copy', 'product-description', 'voice-over', 'captions'],
     required: true,
   },
   credits: {
@@ -87,6 +103,10 @@ const JobItemSchema = new Schema<IJobItem>({
   result: {
     files: [String],
     text: String,
+    type: String,
+    platform: String,
+    style: String,
+    wordCount: Number,
     error: String,
   },
   startedAt: Date,
