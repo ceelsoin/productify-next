@@ -241,11 +241,13 @@ export default function JobPage() {
               <h2 className="mb-4 text-xl font-semibold text-text-primary">
                 Imagem Original
               </h2>
-              <img
-                src={job.originalImage.url}
-                alt={job.productInfo.name}
-                className="w-full rounded-lg border border-border"
-              />
+              <div className="flex justify-center">
+                <img
+                  src={job.originalImage.url}
+                  alt={job.productInfo.name}
+                  className="max-h-96 w-auto rounded-lg border border-border object-contain"
+                />
+              </div>
               {job.productInfo.description && (
                 <p className="mt-4 text-sm text-text-secondary">
                   {job.productInfo.description}
