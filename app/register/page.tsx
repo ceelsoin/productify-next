@@ -2,13 +2,12 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { signIn } from 'next-auth/react';
 import { Sparkles, Mail, Lock, User, Phone, Eye, EyeOff } from 'lucide-react';
 import PhoneInput from 'react-phone-number-input';
 import 'react-phone-number-input/style.css';
 
 export default function RegisterPage() {
-  const router = useRouter();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -77,10 +76,22 @@ export default function RegisterPage() {
       // Salvar senha temporariamente para login automático após verificação
       localStorage.setItem('temp_password', formData.password);
 
-      // Redirecionar para verificação de telefone
-      router.push(
-        `/verify-phone?phone=${encodeURIComponent(phoneValue || '')}&countryCode=${countryCode}`
-      );
+      // Fazer login automático após registro para criar a sessão
+      const signInResult = await signIn('credentials', {
+        email: formData.email,
+        password: formData.password,
+        redirect: false,
+      });
+
+      if (!signInResult?.ok) {
+        throw new Error('Erro ao fazer login automático após registro');
+      }
+
+      // Aguardar sessão ser estabelecida e redirecionar com reload completo
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Usar window.location para garantir que a sessão seja recarregada
+      window.location.href = '/verify-phone';
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao criar conta';
       

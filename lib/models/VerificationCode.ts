@@ -6,6 +6,7 @@ export interface IVerificationCode extends Document {
   phone: string;
   countryCode: string;
   phoneVerified: string; // Telefone completo que foi verificado (countryCode + phone)
+  verified: boolean;
   expires: Date;
   active: boolean;
   usedAt?: Date;
@@ -25,6 +26,10 @@ const VerificationCodeSchema = new Schema<IVerificationCode>(
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: true,
+    },
+    verified: {
+      type: Boolean,
+      default: false,
     },
     phone: {
       type: String,

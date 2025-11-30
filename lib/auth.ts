@@ -94,15 +94,23 @@ export const authConfig: NextAuthConfig = {
         if (dbUser) {
           token.credits = dbUser.credits;
           token.id = dbUser._id.toString();
+          token.phoneVerified = dbUser.phoneVerified || false;
         }
+
+       
       }
 
       return token;
     },
     async session({ session, token }) {
+      // console.log(token, session)
       if (token && session.user) {
+        session.user.phoneVerified = token.phoneVerified || false;
         session.user.id = token.id as string;
         session.user.credits = token.credits as number;
+        session.user.phoneVerified = token.phoneVerified as boolean;
+        session.user.phone = token.phone as string;
+        session.user.countryCode = token.countryCode as string;
       }
       return session;
     },

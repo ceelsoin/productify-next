@@ -6,6 +6,16 @@ export async function middleware(request: NextRequest) {
   const token = request.cookies.get('next-auth.session-token') || 
                  request.cookies.get('__Secure-next-auth.session-token');
 
+
+  // Get session from NextAuth
+  const sessionUrl = new URL('/api/auth/session', request.url);
+  const sessionRes = await fetch(sessionUrl, {
+    headers: {
+      cookie: `next-auth.session-token=${token?.value || ''}`,
+    },
+  });
+  const session = sessionRes.ok ? await sessionRes.json() : null;
+
   // Protected routes
   const protectedRoutes = ['/generate', '/products', '/credits'];
   const isProtectedRoute = protectedRoutes.some(route =>
@@ -16,6 +26,12 @@ export async function middleware(request: NextRequest) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('callbackUrl', request.nextUrl.pathname);
     return NextResponse.redirect(loginUrl);
+  }
+
+  if(isProtectedRoute && !session?.user?.phoneVerified) {
+    const verifyPhoneUrl = new URL('/verify-phone', request.url);
+    verifyPhoneUrl.searchParams.set('callbackUrl', request.nextUrl.pathname);
+    return NextResponse.redirect(verifyPhoneUrl);
   }
 
   // Redirect authenticated users away from auth pages

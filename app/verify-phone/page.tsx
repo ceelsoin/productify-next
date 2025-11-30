@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { Sparkles, Smartphone, ArrowLeft } from 'lucide-react';
 
 export default function VerifyPhonePage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const { data: session, status } = useSession();
   const [code, setCode] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -15,14 +16,30 @@ export default function VerifyPhonePage() {
   const [countdown, setCountdown] = useState(60);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  const phone = searchParams.get('phone');
-  const countryCode = searchParams.get('countryCode') || 'BR';
+  const phone = session?.user?.phone;
+  const countryCode = session?.user?.countryCode || 'BR';
 
   useEffect(() => {
-    if (!phone) {
-      router.push('/register');
+    // Aguardar carregamento da sessão
+    if (status === 'loading') return;
+
+    // Se não está autenticado, redirecionar para login
+    if (status === 'unauthenticated') {
+      router.push('/login');
+      return;
     }
-  }, [phone, router]);
+
+    // Se não tem telefone na sessão mas está autenticado, buscar dados
+    if (status === 'authenticated' && !phone) {
+      // Dar um tempo para a sessão atualizar
+      const timer = setTimeout(() => {
+        if (!session?.user?.phone) {
+          router.push('/register');
+        }
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [phone, router, status, session]);
 
   useEffect(() => {
     if (countdown > 0) {
@@ -170,8 +187,31 @@ export default function VerifyPhonePage() {
     }
   };
 
-  if (!phone) {
-    return null;
+  // Loading state apenas enquanto a sessão está carregando
+  if (status === 'loading') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
+        <div className="text-center">
+          <div className="mb-4 inline-block h-12 w-12 animate-spin rounded-full border-4 border-primary-500/20 border-t-primary-500"></div>
+          <p className="text-text-secondary">Carregando sessão...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Se não tem telefone após autenticação, mostrar erro
+  if (status === 'authenticated' && !phone) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
+        <div className="text-center">
+          <div className="mb-4 rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-4">
+            <p className="text-yellow-400">
+              Nenhum telefone encontrado na sessão. Redirecionando...
+            </p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

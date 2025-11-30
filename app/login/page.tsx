@@ -67,8 +67,8 @@ export default function LoginPage() {
           const checkData = await checkResponse.json();
 
           if (!checkData.phoneVerified && checkData.phone) {
-            // Redirect to phone verification
-            window.location.href = `/verify-phone?phone=${encodeURIComponent(checkData.phone)}&countryCode=${checkData.countryCode || 'BR'}`;
+            // Redirect to phone verification (sem passar telefone por URL)
+            window.location.href = '/verify-phone';
           } else {
             // Wait a bit for session to be established
             await new Promise(resolve => setTimeout(resolve, 500));

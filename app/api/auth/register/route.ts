@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
       const phoneFullNumber = `${countryCode || 'BR'}${phone}`;
       const phoneAlreadyVerified = await VerificationCode.findOne({
         phoneVerified: phoneFullNumber,
+        verified: true,
       });
 
       if (phoneAlreadyVerified) {

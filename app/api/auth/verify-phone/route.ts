@@ -57,6 +57,7 @@ export async function POST(request: Request) {
       active: false,
       usedAt: new Date(),
       phoneVerified: phoneFullNumber,
+      verified: true
     });
 
     // Marcar telefone como verificado
