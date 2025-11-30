@@ -29,9 +29,12 @@ export class TextGenerationWorker extends BaseWorker {
 
     const { jobId, itemIndex, config, productInfo, pipelineName, itemType } = job.data;
 
-    console.log(`[TextGenerationWorker] Processing job ${jobId}, item ${itemIndex}`);
-    console.log(`[TextGenerationWorker] Type: ${itemType}, Pipeline: ${pipelineName}`);
-    console.log(`[TextGenerationWorker] Config:`, config);
+    console.log(`\n======== [TextGenerationWorker] START ========`);
+    console.log(`[TextGenerationWorker] Job ID: ${jobId}, Item Index: ${itemIndex}`);
+    console.log(`[TextGenerationWorker] Type: ${itemType}`);
+    console.log(`[TextGenerationWorker] Pipeline: ${pipelineName}`);
+    console.log(`[TextGenerationWorker] Product Info:`, JSON.stringify(productInfo, null, 2));
+    console.log(`[TextGenerationWorker] Config received from orchestrator:`, JSON.stringify(config, null, 2));
 
     try {
       await this.updateProgress(jobId, itemIndex, 20);
@@ -52,6 +55,10 @@ export class TextGenerationWorker extends BaseWorker {
 
       // Generate text using pipeline prompt configuration
       const text = await this.generateText(productInfo, config, step.promptConfig);
+      
+      console.log(`[TextGenerationWorker] Generated text (${text.split(/\s+/).length} words):`);
+      console.log(text.substring(0, 200) + '...');
+      console.log(`======== [TextGenerationWorker] END ========\n`);
       
       await this.updateProgress(jobId, itemIndex, 100);
 
@@ -119,6 +126,7 @@ export class TextGenerationWorker extends BaseWorker {
     promptConfig: { systemPrompt: string; userPromptTemplate: string; variables: string[] }
   ): Promise<string> {
     console.log(`[TextGenerationWorker] Generating text with prompt template...`);
+    console.log(`[TextGenerationWorker] Config received:`, JSON.stringify(config, null, 2));
 
     try {
       // Prepare variables for template rendering
@@ -128,12 +136,14 @@ export class TextGenerationWorker extends BaseWorker {
         ...config, // Merge all config values as variables
       };
 
+      console.log(`[TextGenerationWorker] Variables for template:`, JSON.stringify(variables, null, 2));
+
       // Render prompts using template engine
       const systemPrompt = PromptTemplateService.render(promptConfig.systemPrompt, variables);
       const userPrompt = PromptTemplateService.render(promptConfig.userPromptTemplate, variables);
 
-      console.log(`[TextGenerationWorker] System Prompt (${systemPrompt.length} chars)`);
-      console.log(`[TextGenerationWorker] User Prompt (${userPrompt.length} chars)`);
+      console.log(`[TextGenerationWorker] System Prompt:\n${systemPrompt}`);
+      console.log(`[TextGenerationWorker] User Prompt:\n${userPrompt}`);
 
       // Use LangChain service to generate text
       const text = await langChainAIService.generateText(systemPrompt, userPrompt);

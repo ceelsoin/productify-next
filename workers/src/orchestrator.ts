@@ -44,8 +44,8 @@ class OrchestratorWorker {
 
         console.log(`[Orchestrator] Starting pipeline "${pipeline.name}" for job ${jobId}`);
 
-        // Start pipeline execution
-        await orchestrator.startPipeline(jobId, pipeline);
+        // Start pipeline execution (pass pipelineName as ID)
+        await orchestrator.startPipeline(jobId, pipeline, pipelineName);
 
         return { success: true, jobId, pipeline: pipeline.name };
       } catch (error) {

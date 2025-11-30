@@ -351,6 +351,8 @@ export default function GeneratePage() {
           itemConfig = config.promotionalVideo || {};
         } else if (type === 'viral-copy') {
           itemConfig = config.viralCopy || {};
+        } else if (type === 'product-description') {
+          itemConfig = config.productDescription || {};
         } else if (type === 'voice-over') {
           itemConfig = config.voiceOver || {};
         }

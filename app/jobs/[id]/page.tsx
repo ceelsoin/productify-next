@@ -109,6 +109,8 @@ export default function JobPage() {
         return 'Copy Viral';
       case 'voice-over':
         return 'Narração (Voice-over)';
+      case "product-description":
+        return "Descrição do Produto";
       default:
         return type;
     }

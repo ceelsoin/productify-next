@@ -15,6 +15,7 @@ import { Pipeline, validatePipeline } from './pipelines';
  */
 interface PipelineExecution {
   jobId: string;
+  pipelineId: string; // ID do pipeline (ex: "viral-copy-only")
   pipeline: Pipeline;
   completedSteps: Set<JobType>;
   results: Map<JobType, unknown>;
@@ -33,6 +34,7 @@ class PipelineOrchestrator {
   async startPipeline(
     jobId: string,
     pipeline: Pipeline,
+    pipelineId?: string, // ID do pipeline (ex: "viral-copy-only")
     overrideConfigs?: Map<JobType, Record<string, unknown>>
   ): Promise<void> {
     console.log(`[Orchestrator] Starting pipeline "${pipeline.name}" for job ${jobId}`);
@@ -68,6 +70,7 @@ class PipelineOrchestrator {
     // Create execution state
     const execution: PipelineExecution = {
       jobId,
+      pipelineId: pipelineId || 'unknown', // Use provided ID or fallback
       pipeline,
       completedSteps: new Set(),
       results: new Map(),
@@ -121,7 +124,7 @@ class PipelineOrchestrator {
 
       // Execute step
       console.log(`[Orchestrator] Executing step ${step.type} for job ${jobId}`);
-      await this.executeStep(jobId, step.type, itemIndex, step.config, execution.results);
+      await this.executeStep(jobId, step.type, itemIndex, item.config, execution.results);
     }
   }
 
@@ -147,17 +150,21 @@ class PipelineOrchestrator {
     };
 
     // Create worker job data
+    const execution = this.executions.get(jobId);
     const workerJobData: WorkerJobData = {
       jobId,
       itemIndex,
       type,
       itemType: type, // Explicit type for routing
-      pipelineName: this.executions.get(jobId)?.pipeline.name, // Pipeline name for prompt lookup
+      pipelineName: execution?.pipelineId, // Pipeline ID (ex: "viral-copy-only") for prompt lookup
       config,
       originalImage: job.originalImage,
       productInfo: job.productInfo,
       previousResults: results,
     };
+
+    console.log(`[Orchestrator] Sending to worker - Type: ${type}, Pipeline: ${execution?.pipelineId}`);
+    console.log(`[Orchestrator] Config being sent:`, JSON.stringify(config, null, 2));
 
     // Add job to appropriate queue
     const queueName = this.getQueueNameForType(type);
@@ -224,6 +231,7 @@ class PipelineOrchestrator {
     const queueMap: Record<JobType, string> = {
       [JobType.ENHANCED_IMAGES]: 'images-queue',
       [JobType.VIRAL_COPY]: 'text-queue',
+      [JobType.PRODUCT_DESCRIPTION]: 'text-queue', // Uses same text generation worker
       [JobType.VOICE_OVER]: 'voiceover-queue',
       [JobType.CAPTIONS]: 'captions-queue',
       [JobType.PROMOTIONAL_VIDEO]: 'video-queue',
