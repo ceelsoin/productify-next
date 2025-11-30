@@ -22,9 +22,10 @@ The worker system is designed to be:
 ### 2. Text Generation Worker
 - **Queue**: `text-queue`
 - **Concurrency**: 3
-- **Purpose**: Generate viral copy for social media platforms
-- **Input**: Product info
-- **Output**: Platform-specific marketing text
+- **Purpose**: Generate viral copy for social media platforms using Grok AI
+- **Model**: x-ai/grok-2-1212 (via OpenRouter)
+- **Input**: Product info, platform, tone
+- **Output**: Platform-specific marketing text with hashtags and emojis
 
 ### 3. Voice-Over Worker
 - **Queue**: `voiceover-queue`
@@ -69,8 +70,20 @@ cp .env.example .env
 ```bash
 MONGODB_URI=mongodb://localhost:27017/productify
 REDIS_URL=redis://localhost:6379
+OPENROUTER_API_KEY=sk-or-v1-... # Get from https://openrouter.ai/keys
 WORKERS=images,text,voiceover,captions,video
 ```
+
+### Getting OpenRouter API Key
+
+1. Visit [https://openrouter.ai](https://openrouter.ai)
+2. Sign up or log in
+3. Go to [API Keys](https://openrouter.ai/keys)
+4. Create a new API key
+5. Add credits to your account (pay-as-you-go)
+6. Copy the key and add to your `.env` file
+
+The text generation worker uses **Grok 2 (x-ai/grok-2-1212)** model for generating viral social media copy.
 
 ## Running Workers
 
