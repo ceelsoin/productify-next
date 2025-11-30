@@ -21,6 +21,12 @@ export default function LoginPage() {
     if (searchParams.get('registered') === 'true') {
       setSuccess('Conta criada com sucesso! Faça login para continuar.');
     }
+    if (searchParams.get('reset') === 'success') {
+      setSuccess('Senha redefinida com sucesso! Faça login com sua nova senha.');
+    }
+    if (searchParams.get('verified') === 'true') {
+      setSuccess('Telefone verificado! Faça login para continuar.');
+    }
   }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -38,18 +44,50 @@ export default function LoginPage() {
       console.log('SignIn result:', result);
 
       if (result?.error) {
-        throw new Error(result.error);
+        throw new Error(result.error || 'Erro ao fazer login');
       }
 
       if (result?.ok) {
-        // Wait a bit for session to be established
-        await new Promise(resolve => setTimeout(resolve, 500));
-        window.location.href = '/generate';
+        // Check if phone is verified
+        try {
+          const checkResponse = await fetch('/api/auth/check-verification', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: formData.email }),
+          });
+
+          if (!checkResponse.ok) {
+            // If verification check fails, just redirect to generate
+            console.warn('Failed to check verification status, redirecting to generate');
+            await new Promise(resolve => setTimeout(resolve, 500));
+            window.location.href = '/generate';
+            return;
+          }
+
+          const checkData = await checkResponse.json();
+
+          if (!checkData.phoneVerified && checkData.phone) {
+            // Redirect to phone verification
+            window.location.href = `/verify-phone?phone=${encodeURIComponent(checkData.phone)}&countryCode=${checkData.countryCode || 'BR'}`;
+          } else {
+            // Wait a bit for session to be established
+            await new Promise(resolve => setTimeout(resolve, 500));
+            window.location.href = '/generate';
+          }
+        } catch (verifyError) {
+          // If verification check fails, just redirect to generate
+          console.warn('Error checking verification status:', verifyError);
+          await new Promise(resolve => setTimeout(resolve, 500));
+          window.location.href = '/generate';
+        }
       } else {
         throw new Error('Erro ao fazer login');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao fazer login');
+      console.error('Login error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao fazer login';
+      // Evitar mensagens undefined ou vazias
+      setError(errorMessage && errorMessage !== 'undefined' ? errorMessage : 'Erro ao fazer login');
     } finally {
       setLoading(false);
     }
@@ -94,13 +132,13 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {success && (
+          {success && success.trim() && (
             <div className="mb-4 rounded-lg border border-success-500/50 bg-success-500/10 p-3 text-sm text-success-400">
               {success}
             </div>
           )}
 
-          {error && (
+          {error && error.trim() && error !== 'undefined' && (
             <div className="mb-4 rounded-lg border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-400">
               {error}
             </div>

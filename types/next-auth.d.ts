@@ -9,12 +9,18 @@ declare module 'next-auth' {
       name: string;
       image?: string;
       credits: number;
+      phoneVerified?: boolean;
+      phone?: string;
+      countryCode?: string;
     };
   }
 
   interface User {
     id: string;
     credits?: number;
+    phoneVerified?: boolean;
+    phone?: string;
+    countryCode?: string;
   }
 }
 
@@ -22,5 +28,8 @@ declare module 'next-auth/jwt' {
   interface JWT {
     id: string;
     credits?: number;
+    phoneVerified?: boolean;
+    phone?: string;
+    countryCode?: string;
   }
 }

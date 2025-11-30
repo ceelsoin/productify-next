@@ -79,28 +79,20 @@ export function Footer() {
             <h3 className="mb-4 font-semibold text-text-primary">Empresa</h3>
             <ul className="space-y-2 text-sm">
               <li>
-                <a
-                  href="#"
+                <Link
+                  href="/about"
                   className="text-text-secondary transition-colors hover:text-text-primary"
                 >
                   Sobre
-                </a>
+                </Link>
               </li>
               <li>
-                <a
-                  href="#"
-                  className="text-text-secondary transition-colors hover:text-text-primary"
-                >
-                  Blog
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#"
+                <Link
+                  href="/contact"
                   className="text-text-secondary transition-colors hover:text-text-primary"
                 >
                   Contato
-                </a>
+                </Link>
               </li>
             </ul>
           </div>
@@ -110,28 +102,20 @@ export function Footer() {
             <h3 className="mb-4 font-semibold text-text-primary">Legal</h3>
             <ul className="space-y-2 text-sm">
               <li>
-                <a
-                  href="#"
+                <Link
+                  href="/privacy"
                   className="text-text-secondary transition-colors hover:text-text-primary"
                 >
                   Privacidade
-                </a>
+                </Link>
               </li>
               <li>
-                <a
-                  href="#"
+                <Link
+                  href="/terms"
                   className="text-text-secondary transition-colors hover:text-text-primary"
                 >
                   Termos de uso
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#"
-                  className="text-text-secondary transition-colors hover:text-text-primary"
-                >
-                  Licenças
-                </a>
+                </Link>
               </li>
             </ul>
           </div>

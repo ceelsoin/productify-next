@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import { User } from '@/lib/models/User';
+import { VerificationCode } from '@/lib/models/VerificationCode';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, email, password, phone, countryCode } = body;
+    const { name, email, password, phone, countryCode, acceptMarketing } = body;
 
     // Validação
     if (!name || !email || !password) {
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
 
     await connectDB();
 
-    // Verificar se o usuário já existe
+    // Verificar se o usuário já existe por email
     const existingUser = await User.findOne({ email: email.toLowerCase() });
 
     if (existingUser) {
@@ -42,6 +43,40 @@ export async function POST(request: NextRequest) {
         { error: 'Este email já está cadastrado' },
         { status: 409 }
       );
+    }
+
+    // Verificar se o telefone já está cadastrado (busca por phone e countryCode)
+    if (phone) {
+      const existingPhone = await User.findOne({
+        phone: phone,
+        countryCode: countryCode || 'BR',
+      });
+
+      if (existingPhone) {
+        return NextResponse.json(
+          {
+            error:
+              'Este número de telefone já está cadastrado em outra conta',
+          },
+          { status: 409 }
+        );
+      }
+
+      // Verificar se o telefone já foi verificado anteriormente (segurança extra)
+      const phoneFullNumber = `${countryCode || 'BR'}${phone}`;
+      const phoneAlreadyVerified = await VerificationCode.findOne({
+        phoneVerified: phoneFullNumber,
+      });
+
+      if (phoneAlreadyVerified) {
+        return NextResponse.json(
+          {
+            error:
+              'Este número de telefone já foi verificado em outra conta',
+          },
+          { status: 409 }
+        );
+      }
     }
 
     // Criar novo usuário
@@ -53,7 +88,42 @@ export async function POST(request: NextRequest) {
       countryCode: countryCode || 'BR',
       credits: 100, // 100 créditos grátis
       provider: 'credentials',
+      phoneVerified: false,
+      acceptMarketing: acceptMarketing || false,
     });
+
+    // Generate verification code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutos
+
+    // Desativar códigos anteriores deste usuário
+    await VerificationCode.updateMany(
+      { user: user._id, active: true },
+      { active: false }
+    );
+
+    // Criar código de verificação
+    await VerificationCode.create({
+      code,
+      user: user._id,
+      phone,
+      countryCode: countryCode || 'BR',
+      expires,
+      active: true,
+    });
+
+    console.log('\n✅ Código de verificação criado:', {
+      userId: user._id,
+      phone,
+      code,
+      expires: expires.toLocaleString('pt-BR'),
+    });
+
+    // TODO: Send SMS with verification code
+    console.log(
+      `\n📱 SMS Mock - Código de verificação para ${countryCode} ${phone}: ${code}`
+    );
+    console.log(`Expira em: ${expires.toLocaleString('pt-BR')}\n`);
 
     // Retornar usuário sem senha
     return NextResponse.json(
@@ -66,6 +136,10 @@ export async function POST(request: NextRequest) {
           email: user.email,
           credits: user.credits,
         },
+        // Em desenvolvimento, retornar o código para facilitar testes
+        ...(process.env.NODE_ENV === 'development' && {
+          code,
+        }),
       },
       { status: 201 }
     );

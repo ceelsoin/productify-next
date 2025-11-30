@@ -17,8 +17,11 @@ export default function RegisterPage() {
     phone: '',
   });
   const [phoneValue, setPhoneValue] = useState<string>();
+  const [countryCode, setCountryCode] = useState('BR');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [acceptMarketing, setAcceptMarketing] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -27,6 +30,11 @@ export default function RegisterPage() {
     setError('');
 
     // Validações
+    if (!acceptTerms) {
+      setError('Você deve aceitar os Termos de Uso e Política de Privacidade');
+      return;
+    }
+
     if (formData.password !== formData.confirmPassword) {
       setError('As senhas não coincidem');
       return;
@@ -50,6 +58,8 @@ export default function RegisterPage() {
           email: formData.email,
           password: formData.password,
           phone: phoneValue,
+          countryCode,
+          acceptMarketing,
         }),
       });
 
@@ -59,10 +69,30 @@ export default function RegisterPage() {
         throw new Error(data.error || 'Erro ao criar conta');
       }
 
-      // Redirecionar para login após cadastro
-      router.push('/login?registered=true');
+      // Show code in development
+      if (data.code) {
+        console.log('🔐 Código de verificação:', data.code);
+      }
+
+      // Salvar senha temporariamente para login automático após verificação
+      localStorage.setItem('temp_password', formData.password);
+
+      // Redirecionar para verificação de telefone
+      router.push(
+        `/verify-phone?phone=${encodeURIComponent(phoneValue || '')}&countryCode=${countryCode}`
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao criar conta');
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao criar conta';
+      
+      // Adicionar dica se o erro for sobre telefone já cadastrado
+      if (errorMessage.includes('telefone já está cadastrado') || 
+          errorMessage.includes('telefone já foi verificado')) {
+        setError(errorMessage + ' Tente fazer login ou use outro número.');
+      } else if (errorMessage.includes('email já está cadastrado')) {
+        setError(errorMessage + ' Tente fazer login.');
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -100,8 +130,17 @@ export default function RegisterPage() {
           </div>
 
           {error && (
-            <div className="mb-4 rounded-lg border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-400">
-              {error}
+            <div className="mb-4 rounded-lg border border-red-500/50 bg-red-500/10 p-3">
+              <p className="text-sm text-red-400">{error}</p>
+              {(error.includes('já está cadastrado') || 
+                error.includes('já foi verificado')) && (
+                <Link
+                  href="/login"
+                  className="mt-2 inline-block text-sm font-medium text-primary-400 underline hover:text-primary-300"
+                >
+                  Ir para login →
+                </Link>
+              )}
             </div>
           )}
 
@@ -168,7 +207,18 @@ export default function RegisterPage() {
                   international
                   defaultCountry="BR"
                   value={phoneValue}
-                  onChange={setPhoneValue}
+                  onChange={value => {
+                    setPhoneValue(value);
+                    // Extract country code from phone number
+                    if (value && value.startsWith('+55')) {
+                      setCountryCode('BR');
+                    }
+                  }}
+                  onCountryChange={country => {
+                    if (country) {
+                      setCountryCode(country);
+                    }
+                  }}
                   className="phone-input w-full rounded-lg border border-border bg-background px-10 py-3 text-text-primary focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-500/20"
                 />
               </div>
@@ -247,6 +297,68 @@ export default function RegisterPage() {
               </div>
             </div>
 
+            {/* Terms Acceptance */}
+            <div className="space-y-3">
+              <div className="flex items-start gap-3">
+                <input
+                  id="acceptTerms"
+                  type="checkbox"
+                  checked={acceptTerms}
+                  onChange={e => setAcceptTerms(e.target.checked)}
+                  className="mt-1 h-4 w-4 cursor-pointer rounded border-border bg-background text-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                  required
+                />
+                <label
+                  htmlFor="acceptTerms"
+                  className="cursor-pointer text-sm text-text-secondary"
+                >
+                  Eu li e aceito os{' '}
+                  <Link
+                    href="/terms"
+                    target="_blank"
+                    className="text-primary-400 underline hover:text-primary-300"
+                  >
+                    Termos de Uso
+                  </Link>{' '}
+                  e a{' '}
+                  <Link
+                    href="/privacy"
+                    target="_blank"
+                    className="text-primary-400 underline hover:text-primary-300"
+                  >
+                    Política de Privacidade
+                  </Link>
+                  <span className="text-red-400"> *</span>
+                </label>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <input
+                  id="acceptMarketing"
+                  type="checkbox"
+                  checked={acceptMarketing}
+                  onChange={e => setAcceptMarketing(e.target.checked)}
+                  className="mt-1 h-4 w-4 cursor-pointer rounded border-border bg-background text-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                />
+                <label
+                  htmlFor="acceptMarketing"
+                  className="cursor-pointer text-sm text-text-secondary"
+                >
+                  Quero receber promoções, novidades e ofertas exclusivas por
+                  e-mail (opcional)
+                </label>
+              </div>
+
+              {/* LGPD Notice */}
+              <div className="rounded-lg border border-border bg-background-secondary/50 p-3">
+                <p className="text-xs text-text-tertiary">
+                  🔒 Seus dados estão protegidos conforme a LGPD. Você pode
+                  acessar, corrigir ou deletar suas informações a qualquer
+                  momento. Não vendemos dados para terceiros.
+                </p>
+              </div>
+            </div>
+
             {/* Submit Button */}
             <button
               type="submit"
@@ -272,18 +384,6 @@ export default function RegisterPage() {
             Fazer login
           </Link>
         </div>
-
-        {/* Terms */}
-        <p className="mt-6 text-center text-xs text-text-tertiary">
-          Ao criar uma conta, você concorda com nossos{' '}
-          <a href="#" className="text-primary-400 hover:text-primary-300">
-            Termos de Uso
-          </a>{' '}
-          e{' '}
-          <a href="#" className="text-primary-400 hover:text-primary-300">
-            Política de Privacidade
-          </a>
-        </p>
       </div>
     </div>
   );

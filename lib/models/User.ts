@@ -11,6 +11,8 @@ export interface IUser {
   credits: number;
   image?: string;
   emailVerified?: Date;
+  phoneVerified: boolean;
+  acceptMarketing: boolean;
   provider?: 'credentials' | 'google' | 'facebook' | 'twitter';
   createdAt: Date;
   updatedAt: Date;
@@ -49,6 +51,14 @@ const UserSchema = new Schema<IUser>(
     },
     emailVerified: {
       type: Date,
+    },
+    phoneVerified: {
+      type: Boolean,
+      default: false,
+    },
+    acceptMarketing: {
+      type: Boolean,
+      default: false,
     },
     provider: {
       type: String,

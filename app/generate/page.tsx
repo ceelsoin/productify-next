@@ -23,12 +23,15 @@ interface ImageScenario {
   id: string;
   name: string;
   preview: string;
+  previewImage?: string; // URL da imagem de preview
 }
 
-interface VideoTransition {
+interface VideoTemplate {
   id: string;
   name: string;
-  preview: string;
+  description: string;
+  previewVideo?: string; // URL do vídeo de preview
+  previewImage?: string; // Thumbnail do template
 }
 
 interface VoiceOption {
@@ -46,7 +49,7 @@ interface GenerationConfig {
     music: boolean;
     narration: boolean;
     subtitles: boolean;
-    transition: string;
+    template: string;
   };
   viralCopy?: {
     tone: string;
@@ -67,6 +70,7 @@ export default function GeneratePage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [generationType, setGenerationType] = useState<string[]>([]);
   const [expandedOptions, setExpandedOptions] = useState<string[]>([]);
+  const [isPlayingVoicePreview, setIsPlayingVoicePreview] = useState(false);
   
   // Product information
   const [productInfo, setProductInfo] = useState({
@@ -85,7 +89,7 @@ export default function GeneratePage() {
       music: true,
       narration: false,
       subtitles: true,
-      transition: 'fade',
+      template: 'template-1',
     },
     viralCopy: {
       tone: 'professional',
@@ -102,21 +106,74 @@ export default function GeneratePage() {
 
   // Available scenarios for enhanced images
   const imageScenarios: ImageScenario[] = [
-    { id: 'table', name: 'Mesa Profissional', preview: '🪑' },
-    { id: 'nature', name: 'Natureza', preview: '🌿' },
-    { id: 'minimal', name: 'Minimalista', preview: '⬜' },
-    { id: 'lifestyle', name: 'Lifestyle', preview: '🏠' },
-    { id: 'studio', name: 'Estúdio', preview: '📸' },
-    { id: 'random', name: 'Aleatório', preview: '🎲' },
+    { 
+      id: 'table', 
+      name: 'Mesa Profissional', 
+      preview: '🪑',
+      previewImage: '/templates/scenarios/table.jpg' // Placeholder - você pode adicionar imagens reais
+    },
+    { 
+      id: 'nature', 
+      name: 'Natureza', 
+      preview: '🌿',
+      previewImage: '/templates/scenarios/nature.jpg'
+    },
+    { 
+      id: 'minimal', 
+      name: 'Minimalista', 
+      preview: '⬜',
+      previewImage: '/templates/scenarios/minimal.jpg'
+    },
+    { 
+      id: 'lifestyle', 
+      name: 'Lifestyle', 
+      preview: '🏠',
+      previewImage: '/templates/scenarios/lifestyle.jpg'
+    },
+    { 
+      id: 'studio', 
+      name: 'Estúdio', 
+      preview: '📸',
+      previewImage: '/templates/scenarios/studio.jpg'
+    },
+    { 
+      id: 'random', 
+      name: 'Aleatório', 
+      preview: '🎲',
+      previewImage: '/templates/scenarios/random.jpg'
+    },
   ];
 
-  // Available video transitions
-  const videoTransitions: VideoTransition[] = [
-    { id: 'fade', name: 'Fade', preview: '→' },
-    { id: 'slide', name: 'Slide', preview: '⇒' },
-    { id: 'zoom', name: 'Zoom', preview: '🔍' },
-    { id: 'dissolve', name: 'Dissolve', preview: '✨' },
-    { id: 'wipe', name: 'Wipe', preview: '↔' },
+  // Available video templates
+  const videoTemplates: VideoTemplate[] = [
+    { 
+      id: 'template-1', 
+      name: 'Modelo 1', 
+      description: 'Dinâmico e moderno',
+      previewImage: '/templates/videos/template-1-thumb.jpg',
+      previewVideo: '/templates/videos/template-1-preview.mp4'
+    },
+    { 
+      id: 'template-2', 
+      name: 'Modelo 2', 
+      description: 'Elegante e minimalista',
+      previewImage: '/templates/videos/template-2-thumb.jpg',
+      previewVideo: '/templates/videos/template-2-preview.mp4'
+    },
+    { 
+      id: 'template-3', 
+      name: 'Modelo 3', 
+      description: 'Energético e vibrante',
+      previewImage: '/templates/videos/template-3-thumb.jpg',
+      previewVideo: '/templates/videos/template-3-preview.mp4'
+    },
+    { 
+      id: 'template-4', 
+      name: 'Modelo 4', 
+      description: 'Profissional e clean',
+      previewImage: '/templates/videos/template-4-thumb.jpg',
+      previewVideo: '/templates/videos/template-4-preview.mp4'
+    },
   ];
 
   // Available voices
@@ -159,6 +216,40 @@ export default function GeneratePage() {
         [key]: value,
       },
     }));
+  };
+
+  const playVoicePreview = () => {
+    setIsPlayingVoicePreview(true);
+    
+    // Simular preview de voz com Web Speech API (ou você pode usar Google TTS API)
+    const utterance = new SpeechSynthesisUtterance(
+      'Olá! Este é um exemplo de como ficará a narração do seu produto com as configurações selecionadas.'
+    );
+    
+    // Configurar voz baseado na seleção
+    const voices = window.speechSynthesis.getVoices();
+    const selectedVoice = voices.find(v => 
+      v.lang.includes('pt-BR') && 
+      (config.voiceOver?.voice.includes('female') ? v.name.includes('female') || v.name.includes('Google português do Brasil') : v.name.includes('male'))
+    );
+    
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
+    }
+    
+    utterance.rate = config.voiceOver?.speed || 1.0;
+    utterance.pitch = 1.0;
+    
+    utterance.onend = () => {
+      setIsPlayingVoicePreview(false);
+    };
+    
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const stopVoicePreview = () => {
+    window.speechSynthesis.cancel();
+    setIsPlayingVoicePreview(false);
   };
 
   const generationOptions = [
@@ -294,11 +385,11 @@ export default function GeneratePage() {
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="mb-2 block text-sm font-medium text-text-secondary">
-                          Altura (cm) <span className="text-red-400">*</span>
+                          Altura (cm){' '}
+                          <span className="text-text-tertiary">(Opcional)</span>
                         </label>
                         <input
                           type="number"
-                          required
                           value={productInfo.height}
                           onChange={e =>
                             setProductInfo({ ...productInfo, height: e.target.value })
@@ -309,11 +400,11 @@ export default function GeneratePage() {
                       </div>
                       <div>
                         <label className="mb-2 block text-sm font-medium text-text-secondary">
-                          Largura (cm) <span className="text-red-400">*</span>
+                          Largura (cm){' '}
+                          <span className="text-text-tertiary">(Opcional)</span>
                         </label>
                         <input
                           type="number"
-                          required
                           value={productInfo.width}
                           onChange={e =>
                             setProductInfo({ ...productInfo, width: e.target.value })
@@ -327,11 +418,11 @@ export default function GeneratePage() {
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="mb-2 block text-sm font-medium text-text-secondary">
-                          Profundidade (cm) <span className="text-red-400">*</span>
+                          Profundidade (cm){' '}
+                          <span className="text-text-tertiary">(Opcional)</span>
                         </label>
                         <input
                           type="number"
-                          required
                           value={productInfo.depth}
                           onChange={e =>
                             setProductInfo({ ...productInfo, depth: e.target.value })
@@ -342,11 +433,11 @@ export default function GeneratePage() {
                       </div>
                       <div>
                         <label className="mb-2 block text-sm font-medium text-text-secondary">
-                          Peso (g) <span className="text-red-400">*</span>
+                          Peso (g){' '}
+                          <span className="text-text-tertiary">(Opcional)</span>
                         </label>
                         <input
                           type="number"
-                          required
                           value={productInfo.weight}
                           onChange={e =>
                             setProductInfo({ ...productInfo, weight: e.target.value })
@@ -408,6 +499,14 @@ export default function GeneratePage() {
                       <span>
                         Imagens até 10MB. Use ferramentas de compressão se
                         necessário.
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="text-blue-400">•</span>
+                      <span>
+                        <strong>Dimensões e peso:</strong> apesar de opcionais,
+                        ajudam muito a IA a criar descrições mais precisas do
+                        produto.
                       </span>
                     </li>
                     <li className="flex gap-2">
@@ -492,9 +591,9 @@ export default function GeneratePage() {
                               <div className="space-y-3">
                                 <h4 className="flex items-center gap-2 text-sm font-medium text-text-primary">
                                   <Info className="h-4 w-4" />
-                                  Configurações de Cenário
+                                  Escolha o Cenário
                                 </h4>
-                                <div className="grid grid-cols-3 gap-2">
+                                <div className="grid grid-cols-3 gap-3">
                                   {imageScenarios.map(scenario => (
                                     <button
                                       key={scenario.id}
@@ -505,18 +604,37 @@ export default function GeneratePage() {
                                           scenario.id
                                         )
                                       }
-                                      className={`rounded-lg border p-3 text-center transition-all ${
+                                      className={`group relative overflow-hidden rounded-lg border transition-all ${
                                         config.enhancedImages?.scenario ===
                                         scenario.id
-                                          ? 'border-primary-500 bg-primary-500/10'
+                                          ? 'border-primary-500 ring-2 ring-primary-500/20'
                                           : 'border-border hover:border-primary-500/50'
                                       }`}
                                     >
-                                      <div className="mb-1 text-2xl">
-                                        {scenario.preview}
+                                      {/* Preview Image */}
+                                      <div className="relative aspect-square w-full overflow-hidden bg-background-secondary">
+                                        {scenario.previewImage ? (
+                                          <img
+                                            src={scenario.previewImage}
+                                            alt={scenario.name}
+                                            className="h-full w-full object-cover"
+                                            onError={(e) => {
+                                              // Fallback se a imagem não carregar
+                                              e.currentTarget.style.display = 'none';
+                                              e.currentTarget.nextElementSibling!.classList.remove('hidden');
+                                            }}
+                                          />
+                                        ) : null}
+                                        {/* Fallback emoji */}
+                                        <div className={`flex h-full w-full items-center justify-center text-4xl ${scenario.previewImage ? 'hidden' : ''}`}>
+                                          {scenario.preview}
+                                        </div>
                                       </div>
-                                      <div className="text-xs text-text-secondary">
-                                        {scenario.name}
+                                      {/* Scenario Name */}
+                                      <div className="p-2 text-center">
+                                        <div className="text-xs font-medium text-text-primary">
+                                          {scenario.name}
+                                        </div>
                                       </div>
                                     </button>
                                   ))}
@@ -590,31 +708,63 @@ export default function GeneratePage() {
 
                                 <div>
                                   <label className="mb-2 block text-sm text-text-secondary">
-                                    Modelo de Transição
+                                    Modelo de Vídeo
                                   </label>
-                                  <div className="grid grid-cols-5 gap-2">
-                                    {videoTransitions.map(transition => (
+                                  <div className="grid grid-cols-2 gap-3">
+                                    {videoTemplates.map(template => (
                                       <button
-                                        key={transition.id}
+                                        key={template.id}
                                         onClick={() =>
                                           updateConfig(
                                             'promotionalVideo',
-                                            'transition',
-                                            transition.id
+                                            'template',
+                                            template.id
                                           )
                                         }
-                                        className={`rounded-lg border p-2 text-center transition-all ${
-                                          config.promotionalVideo?.transition ===
-                                          transition.id
-                                            ? 'border-primary-500 bg-primary-500/10'
+                                        className={`group relative overflow-hidden rounded-lg border transition-all ${
+                                          config.promotionalVideo?.template ===
+                                          template.id
+                                            ? 'border-primary-500 ring-2 ring-primary-500/20'
                                             : 'border-border hover:border-primary-500/50'
                                         }`}
                                       >
-                                        <div className="mb-1 text-lg">
-                                          {transition.preview}
+                                        {/* Preview Image/Video */}
+                                        <div className="relative aspect-video w-full overflow-hidden bg-background-secondary">
+                                          {template.previewImage ? (
+                                            <img
+                                              src={template.previewImage}
+                                              alt={template.name}
+                                              className="h-full w-full object-cover"
+                                              onError={(e) => {
+                                                // Fallback se a imagem não carregar
+                                                e.currentTarget.style.display = 'none';
+                                                e.currentTarget.nextElementSibling!.classList.remove('hidden');
+                                              }}
+                                            />
+                                          ) : null}
+                                          {/* Fallback icon */}
+                                          <div className={`flex h-full w-full items-center justify-center ${template.previewImage ? 'hidden' : ''}`}>
+                                            <Video className="h-12 w-12 text-text-tertiary" />
+                                          </div>
+                                          {/* Play overlay for video preview */}
+                                          {template.previewVideo && (
+                                            <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                                              <div className="rounded-full bg-white/20 p-3 backdrop-blur-sm">
+                                                <svg className="h-6 w-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                                  <path d="M8 5v14l11-7z" />
+                                                </svg>
+                                              </div>
+                                            </div>
+                                          )}
                                         </div>
-                                        <div className="text-xs text-text-secondary">
-                                          {transition.name}
+                                        {/* Template Info */}
+                                        <div className="p-3 text-left">
+                                          <div className="font-medium text-text-primary">
+                                            {template.name}
+                                          </div>
+                                          <div className="text-xs text-text-tertiary">
+                                            {template.description}
+                                          </div>
                                         </div>
                                       </button>
                                     ))}
@@ -786,6 +936,31 @@ export default function GeneratePage() {
                                     <span>Rápido</span>
                                   </div>
                                 </div>
+
+                                {/* Voice Preview Button */}
+                                <div className="pt-2">
+                                  <button
+                                    type="button"
+                                    onClick={isPlayingVoicePreview ? stopVoicePreview : playVoicePreview}
+                                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-primary-500 bg-primary-500/10 px-4 py-3 font-medium text-primary-400 transition-all hover:bg-primary-500/20"
+                                  >
+                                    {isPlayingVoicePreview ? (
+                                      <>
+                                        <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                                          <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                                        </svg>
+                                        <span>Parar Preview</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                                          <path d="M8 5v14l11-7z" />
+                                        </svg>
+                                        <span>Ouvir Preview da Voz</span>
+                                      </>
+                                    )}
+                                  </button>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -830,10 +1005,6 @@ export default function GeneratePage() {
                   disabled={
                     !selectedFile ||
                     !productInfo.name ||
-                    !productInfo.height ||
-                    !productInfo.width ||
-                    !productInfo.depth ||
-                    !productInfo.weight ||
                     generationType.length === 0 ||
                     !hasEnoughCredits
                   }
@@ -841,12 +1012,8 @@ export default function GeneratePage() {
                 >
                   {!selectedFile
                     ? 'Faça upload de uma foto'
-                    : !productInfo.name ||
-                        !productInfo.height ||
-                        !productInfo.width ||
-                        !productInfo.depth ||
-                        !productInfo.weight
-                      ? 'Preencha as informações do produto'
+                    : !productInfo.name
+                      ? 'Preencha o nome do produto'
                       : generationType.length === 0
                         ? 'Selecione pelo menos uma opção'
                         : !hasEnoughCredits
