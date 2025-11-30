@@ -16,6 +16,7 @@ import {
   ChevronUp,
   Info,
   Lightbulb,
+  Settings,
 } from 'lucide-react';
 
 // Types for generation options
@@ -250,9 +251,21 @@ export default function GeneratePage() {
   };
 
   const toggleGenerationType = (type: string) => {
-    setGenerationType(prev =>
-      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
-    );
+    setGenerationType(prev => {
+      const newTypes = prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type];
+      
+      // Auto-expandir opções quando selecionar um tipo
+      if (!prev.includes(type)) {
+        setExpandedOptions(prevExpanded => 
+          prevExpanded.includes(type) ? prevExpanded : [...prevExpanded, type]
+        );
+      } else {
+        // Recolher quando desmarcar
+        setExpandedOptions(prevExpanded => prevExpanded.filter(t => t !== type));
+      }
+      
+      return newTypes;
+    });
   };
 
   const toggleExpandedOption = (type: string) => {
@@ -409,8 +422,8 @@ export default function GeneratePage() {
     },
     {
       id: 'viral-copy',
-      name: 'Copy Viral para Redes Sociais',
-      description: 'Copy otimizado para Instagram, Facebook, Twitter, etc.',
+      name: 'Copy para Redes Sociais',
+      description: 'Copy otimizado para viralizar em Instagram, Facebook, Twitter, etc.',
       icon: FileText,
       credits: 5,
       color: 'from-orange-500 to-red-500',
@@ -426,7 +439,7 @@ export default function GeneratePage() {
     {
       id: 'voice-over',
       name: 'Narração (Voice-over)',
-      description: 'Locução profissional com Google TTS',
+      description: 'Locução profissional com TTS para seus vídeos',
       icon: Mic,
       credits: 15,
       color: 'from-green-500 to-emerald-500',
@@ -674,34 +687,34 @@ export default function GeneratePage() {
                   3. O que deseja gerar?
                 </h2>
 
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {generationOptions.map(option => (
-                    <div key={option.id}>
+                    <div key={option.id} className={`rounded-xl border-2 transition-all ${
+                      generationType.includes(option.id)
+                        ? 'border-primary-500 bg-primary-500/5 shadow-lg shadow-primary-500/10'
+                        : 'border-border bg-background'
+                    }`}>
                       <button
                         onClick={() => toggleGenerationType(option.id)}
                         disabled={!selectedFile}
-                        className={`w-full rounded-xl border p-4 text-left transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
-                          generationType.includes(option.id)
-                            ? 'border-primary-500 bg-primary-500/10'
-                            : 'border-border bg-background hover:border-primary-500/50 hover:bg-background-secondary'
-                        }`}
+                        className={`w-full p-5 text-left transition-all disabled:cursor-not-allowed disabled:opacity-50`}
                       >
                         <div className="flex items-start gap-4">
                           <div
-                            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${option.color}`}
+                            className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${option.color} shadow-lg`}
                           >
-                            <option.icon className="h-6 w-6 text-white" />
+                            <option.icon className="h-7 w-7 text-white" />
                           </div>
                           <div className="flex-1">
-                            <div className="mb-1 flex items-center justify-between">
-                              <h3 className="font-semibold text-text-primary">
+                            <div className="mb-2 flex items-center justify-between">
+                              <h3 className="text-lg font-bold text-text-primary">
                                 {option.name}
                               </h3>
                               <div className="flex items-center gap-3">
-                                <div className="flex items-center gap-1 text-primary-400">
+                                <div className="flex items-center gap-1.5 rounded-full bg-primary-500/10 px-3 py-1.5 text-primary-400">
                                   <Coins className="h-4 w-4" />
-                                  <span className="text-sm font-medium">
-                                    {option.credits}
+                                  <span className="text-sm font-semibold">
+                                    {option.credits} créditos
                                   </span>
                                 </div>
                                 {generationType.includes(option.id) && (
@@ -710,7 +723,7 @@ export default function GeneratePage() {
                                       e.stopPropagation();
                                       toggleExpandedOption(option.id);
                                     }}
-                                    className="text-text-tertiary hover:text-text-primary"
+                                    className="rounded-full p-1.5 text-text-tertiary hover:bg-background-tertiary hover:text-text-primary transition-colors"
                                   >
                                     {expandedOptions.includes(option.id) ? (
                                       <ChevronUp className="h-5 w-5" />
@@ -721,9 +734,19 @@ export default function GeneratePage() {
                                 )}
                               </div>
                             </div>
-                            <p className="text-sm text-text-tertiary">
+                            <p className="text-sm text-text-secondary">
                               {option.description}
                             </p>
+                            {generationType.includes(option.id) && (
+                              <div className="mt-3 flex items-center gap-2 text-xs font-medium text-primary-400">
+                                <Settings className="h-4 w-4" />
+                                <span>
+                                  {expandedOptions.includes(option.id)
+                                    ? 'Clique para ocultar configurações'
+                                    : 'Clique para ver e personalizar configurações'}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </button>
@@ -731,10 +754,15 @@ export default function GeneratePage() {
                       {/* Expanded Configuration Options */}
                       {generationType.includes(option.id) &&
                         expandedOptions.includes(option.id) && (
-                          <div className="mt-2 rounded-lg border border-border bg-background-secondary p-4">
+                          <div className="border-t border-primary-500/20 bg-gradient-to-b from-primary-500/5 to-transparent p-6 mt-1">
+                            <div className="mb-4 flex items-center gap-2 text-primary-400">
+                              <Settings className="h-5 w-5" />
+                              <h4 className="font-semibold">Configurações Personalizadas</h4>
+                            </div>
+                            
                             {/* Enhanced Images Config */}
                             {option.id === 'enhanced-images' && (
-                              <div className="space-y-3">
+                              <div className="space-y-4">
                                 <h4 className="flex items-center gap-2 text-sm font-medium text-text-primary">
                                   <Info className="h-4 w-4" />
                                   Escolha o Cenário
