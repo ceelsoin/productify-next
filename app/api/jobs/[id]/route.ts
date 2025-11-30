@@ -5,7 +5,7 @@ import { auth } from '@/lib/auth';
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Verificar autenticação
@@ -17,8 +17,11 @@ export async function GET(
 
     await connectDB();
 
+    // Await params (Next.js 15 requirement)
+    const { id } = await params;
+
     // Buscar job
-    const job = await Job.findById(params.id);
+    const job = await Job.findById(id);
 
     if (!job) {
       return NextResponse.json(
