@@ -95,6 +95,8 @@ export const authConfig: NextAuthConfig = {
           token.credits = dbUser.credits;
           token.id = dbUser._id.toString();
           token.phoneVerified = dbUser.phoneVerified || false;
+           token.phone = dbUser.phone;
+           token.countryCode = dbUser.countryCode;
         }
 
        
