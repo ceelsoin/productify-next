@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import { User } from '@/lib/models/User';
 import { Job } from '@/lib/models/Job';
+import { TransactionService } from '@/lib/services/transaction.service';
 import { writeFile } from 'fs/promises';
 import { join } from 'path';
 import { randomBytes } from 'crypto';
@@ -136,6 +137,9 @@ export async function POST(request: NextRequest) {
     const imageUrl = `/uploads/products/${filename}`;
 
     // Criar job no banco de dados
+    console.log('🗄️ Next.js Database:', Job.db.name);
+    console.log('🗄️ Next.js Collection:', Job.collection.name);
+    
     const job = await Job.create({
       user: user._id.toString(),
       productInfo: {
@@ -161,13 +165,24 @@ export async function POST(request: NextRequest) {
         status: 'pending',
       })),
       totalCredits,
+      creditsSpent: totalCredits,
+      creditsRefunded: 0,
       status: 'pending',
       progress: 0,
     });
+    
+    console.log('✅ Job criado no Next.js:', job._id);
 
-    // Descontar créditos do usuário
-    user.credits -= totalCredits;
-    await user.save();
+    // Criar transação de débito
+    await TransactionService.createJobDebit(
+      user._id.toString(),
+      job._id.toString(),
+      totalCredits,
+      `Job criado: ${productName}`
+    );
+
+    // Buscar saldo atualizado
+    const updatedUser = await User.findById(user._id);
 
     console.log('✅ Job criado:', {
       jobId: job._id,
@@ -175,11 +190,30 @@ export async function POST(request: NextRequest) {
       productName,
       items: items.length,
       totalCredits,
-      remainingCredits: user.credits,
+      creditsSpent: totalCredits,
+      remainingCredits: updatedUser?.credits,
     });
 
-    // TODO: Adicionar job à fila de processamento (Redis Queue, Bull, etc.)
-    // Por enquanto, apenas retornar sucesso
+    // Adicionar job à fila do orquestrador
+    try {
+      const { queueManager } = await import('@/lib/queue-manager');
+      const { determinePipeline } = await import('@/lib/pipeline-mapper');
+
+      const pipelineName = determinePipeline(items);
+
+      await queueManager.addJob('orchestrator-queue', {
+        jobId: job._id.toString(),
+        pipelineName,
+      });
+
+      console.log('🚀 Job adicionado ao orquestrador:', {
+        jobId: job._id,
+        pipeline: pipelineName,
+      });
+    } catch (queueError) {
+      console.error('⚠️ Erro ao adicionar job à fila:', queueError);
+      // Não retorna erro pois o job já foi criado, apenas loga
+    }
 
     return NextResponse.json(
       {
@@ -190,9 +224,10 @@ export async function POST(request: NextRequest) {
           status: job.status,
           progress: job.progress,
           totalCredits: job.totalCredits,
+          creditsSpent: job.creditsSpent,
           items: job.items.length,
         },
-        remainingCredits: user.credits,
+        remainingCredits: updatedUser?.credits,
       },
       { status: 201 }
     );

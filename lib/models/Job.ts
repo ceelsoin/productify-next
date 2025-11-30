@@ -53,12 +53,16 @@ export interface IJob {
   };
   items: IJobItem[];
   totalCredits: number;
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  creditsSpent: number;
+  creditsRefunded: number;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'refunded';
   progress: number; // 0-100
   createdAt: Date;
   updatedAt: Date;
   startedAt?: Date;
   completedAt?: Date;
+  failedAt?: Date;
+  refundedAt?: Date;
 }
 
 const JobItemSchema = new Schema<IJobItem>({
@@ -132,9 +136,18 @@ const JobSchema = new Schema<IJob>(
       type: Number,
       required: true,
     },
+    creditsSpent: {
+      type: Number,
+      default: 0,
+      required: true,
+    },
+    creditsRefunded: {
+      type: Number,
+      default: 0,
+    },
     status: {
       type: String,
-      enum: ['pending', 'processing', 'completed', 'failed', 'cancelled'],
+      enum: ['pending', 'processing', 'completed', 'failed', 'cancelled', 'refunded'],
       default: 'pending',
       index: true,
     },
@@ -146,6 +159,8 @@ const JobSchema = new Schema<IJob>(
     },
     startedAt: Date,
     completedAt: Date,
+    failedAt: Date,
+    refundedAt: Date,
   },
   {
     timestamps: true,

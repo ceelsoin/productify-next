@@ -15,6 +15,8 @@
     "@remotion/cli": "^4.0.0",
     "@remotion/player": "^4.0.0",
     "bcryptjs": "^3.0.3",
+    "bull": "^4.16.5",
+    "ioredis": "^5.8.2",
     "lucide-react": "^0.555.0",
     "mongodb": "^7.0.0",
     "mongoose": "^9.0.0",
