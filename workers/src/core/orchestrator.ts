@@ -28,15 +28,30 @@ class PipelineOrchestrator {
   private executions: Map<string, PipelineExecution> = new Map();
 
   /**
-   * Start a pipeline execution
+   * Start a pipeline execution with dynamic pipeline creation
    */
   async startPipeline(
     jobId: string,
-    pipeline: Pipeline,
-    pipelineId?: string, // ID do pipeline (ex: "viral-copy-only")
+    pipeline: Pipeline | null = null, // Pipeline can be null for dynamic creation
+    pipelineId?: string,
     overrideConfigs?: Map<JobType, Record<string, unknown>>
   ): Promise<void> {
-    console.log(`[Orchestrator] Starting pipeline "${pipeline.name}" for job ${jobId}`);
+    // Get job from database first
+    const job = await Job.findById(jobId);
+    if (!job) {
+      throw new Error(`Job ${jobId} not found`);
+    }
+
+    console.log(`[Orchestrator] Starting pipeline for job ${jobId}`);
+    console.log(`[Orchestrator] Job items:`, job.items.map((i: any) => i.type));
+
+    // If no pipeline provided, create one dynamically from job items
+    if (!pipeline) {
+      pipeline = this.createDynamicPipeline(job.items);
+      pipelineId = pipelineId || 'dynamic-pipeline';
+    }
+
+    console.log(`[Orchestrator] Using pipeline: ${pipeline.name} (${pipelineId})`);
 
     // Validate pipeline
     const validation = validatePipeline(pipeline);
@@ -44,32 +59,10 @@ class PipelineOrchestrator {
       throw new Error(`Invalid pipeline: ${validation.errors.join(', ')}`);
     }
 
-    // Get job from database
-    console.log(`[Orchestrator] Searching for job ${jobId} in database...`);
-    console.log(`[Orchestrator] Current database:`, Job.db.name);
-    console.log(`[Orchestrator] Collection:`, Job.collection.name);
-    console.log(`[Orchestrator] Full collection name:`, Job.collection.collectionName);
-    
-    // Try to count documents
-    const count = await Job.countDocuments();
-    console.log(`[Orchestrator] Total jobs in collection:`, count);
-    
-    // Try to list all jobs to debug
-    const allJobs = await Job.find({}).limit(10).lean();
-    console.log(`[Orchestrator] Found ${allJobs.length} jobs:`, allJobs.map((j: any) => ({ id: j._id, status: j.status })));
-    
-    const job = await Job.findById(jobId);
-    if (!job) {
-      console.error(`[Orchestrator] Job ${jobId} not found in database`);
-      console.error(`[Orchestrator] MongoDB connection state:`, mongoService.isConnected());
-      throw new Error(`Job ${jobId} not found`);
-    }
-    console.log(`[Orchestrator] Job found:`, { id: job._id, user: job.user, status: job.status });
-
     // Create execution state
     const execution: PipelineExecution = {
       jobId,
-      pipelineId: pipelineId || 'unknown', // Use provided ID or fallback
+      pipelineId: pipelineId || 'unknown',
       pipeline,
       completedItems: new Set(),
       results: new Map(),
@@ -82,8 +75,51 @@ class PipelineOrchestrator {
       $set: { status: JobStatus.PROCESSING, updatedAt: new Date() },
     });
 
-    // Start executing steps that have no dependencies
+    // Start executing items that have no dependencies
     await this.executeReadySteps(jobId);
+  }
+
+  /**
+   * Create a dynamic pipeline based on job items and their dependencies
+   */
+  private createDynamicPipeline(items: any[]): Pipeline {
+    // Import dependencies dynamically
+    const JOB_DEPENDENCIES: Record<string, string[]> = {
+      'enhanced-images': [],
+      'viral-copy': [],
+      'product-description': [],
+      'voice-over': ['viral-copy'],
+      'captions': ['voice-over'],
+      'promotional-video': ['enhanced-images'],
+    };
+
+    const steps = items.map((item: any) => {
+      const itemType = item.type as JobType;
+      const dependencies = JOB_DEPENDENCIES[item.type] || [];
+
+      return {
+        type: itemType,
+        dependsOn: dependencies.map(dep => {
+          // Map dependency string to JobType
+          const depMap: Record<string, JobType> = {
+            'enhanced-images': JobType.ENHANCED_IMAGES,
+            'viral-copy': JobType.VIRAL_COPY,
+            'product-description': JobType.PRODUCT_DESCRIPTION,
+            'voice-over': JobType.VOICE_OVER,
+            'captions': JobType.CAPTIONS,
+            'promotional-video': JobType.PROMOTIONAL_VIDEO,
+          };
+          return depMap[dep];
+        }).filter(Boolean),
+        config: {},
+      };
+    });
+
+    return {
+      name: 'Dynamic Pipeline',
+      description: 'Automatically generated pipeline based on selected items',
+      steps,
+    };
   }
 
   /**
@@ -95,6 +131,16 @@ class PipelineOrchestrator {
 
     const job = await Job.findById(jobId);
     if (!job) return;
+
+    // Get set of completed item types for dependency checking
+    const completedTypes = new Set<string>();
+    for (let idx = 0; idx < job.items.length; idx++) {
+      if (execution.completedItems.has(idx)) {
+        completedTypes.add(job.items[idx].type);
+      }
+    }
+
+    console.log(`[Orchestrator] Completed types:`, Array.from(completedTypes));
 
     // Iterate through all job items
     for (let itemIndex = 0; itemIndex < job.items.length; itemIndex++) {
@@ -120,13 +166,17 @@ class PipelineOrchestrator {
         continue;
       }
 
-      // Check if dependencies are satisfied (for independent items, this should always be true)
-      const dependenciesSatisfied = !step.dependsOn || step.dependsOn.every(dep => 
-        execution.completedItems.has(dep)
-      );
+      // Check if dependencies are satisfied based on completed TYPES (not indices)
+      const dependenciesSatisfied = !step.dependsOn || step.dependsOn.length === 0 || 
+        step.dependsOn.every(depType => {
+          const depTypeName = this.getJobTypeName(depType);
+          const satisfied = completedTypes.has(depTypeName);
+          console.log(`[Orchestrator] Checking dependency ${depTypeName} for ${itemType}: ${satisfied}`);
+          return satisfied;
+        });
 
       if (!dependenciesSatisfied) {
-        console.log(`[Orchestrator] Item ${itemIndex} dependencies not satisfied, skipping`);
+        console.log(`[Orchestrator] Item ${itemIndex} (${itemType}) dependencies not satisfied, skipping`);
         continue;
       }
 
@@ -134,6 +184,21 @@ class PipelineOrchestrator {
       console.log(`[Orchestrator] Executing item ${itemIndex} (${itemType}) for job ${jobId}`);
       await this.executeStep(jobId, itemType, itemIndex, item.config, execution.results);
     }
+  }
+
+  /**
+   * Helper to convert JobType enum to string name
+   */
+  private getJobTypeName(jobType: JobType): string {
+    const typeMap: Record<JobType, string> = {
+      [JobType.ENHANCED_IMAGES]: 'enhanced-images',
+      [JobType.VIRAL_COPY]: 'viral-copy',
+      [JobType.PRODUCT_DESCRIPTION]: 'product-description',
+      [JobType.VOICE_OVER]: 'voice-over',
+      [JobType.CAPTIONS]: 'captions',
+      [JobType.PROMOTIONAL_VIDEO]: 'promotional-video',
+    };
+    return typeMap[jobType];
   }
 
   /**

@@ -10,12 +10,13 @@ import {
 import { storageService } from '../services/storage.service';
 import { mongoService } from '../services/mongodb.service';
 import { queueManager } from '../core/queue-manager';
+import { openAIImageService } from '../services/openai-image.service';
 
 dotenv.config({ path: join(__dirname, '../../.env') });
 
 /**
  * Image Enhancement Worker
- * Processes enhanced-images generation using Google Nano Banana API
+ * Processes enhanced-images generation using OpenAI DALL-E 3
  */
 export class ImageEnhancementWorker extends BaseWorker {
   queueName = 'images-queue';
@@ -24,30 +25,43 @@ export class ImageEnhancementWorker extends BaseWorker {
   async process(job: BullJob<WorkerJobData>): Promise<WorkerJobResult> {
     this.validateJobData(job);
 
-    const { jobId, itemIndex, config, originalImage } = job.data;
+    const { jobId, itemIndex, config, productInfo } = job.data;
     const enhancedConfig = config as EnhancedImagesConfig;
 
     console.log(`[ImageEnhancementWorker] Processing job ${jobId}, item ${itemIndex}`);
+    console.log(`[ImageEnhancementWorker] Product: ${productInfo.name}`);
     console.log(`[ImageEnhancementWorker] Config:`, enhancedConfig);
 
     try {
-      // Read original image
-      await this.updateProgress(jobId, itemIndex, 10);
-      const imagePath = originalImage.url.replace('/uploads/', '');
-      const imageBuffer = await storageService.readFile(imagePath);
+      // Check if OpenAI is configured
+      if (!openAIImageService.isConfigured()) {
+        console.warn('[ImageEnhancementWorker] OpenAI not configured, using mock implementation');
+        return await this.processMock(jobId, itemIndex, enhancedConfig);
+      }
 
-      // Process image with Google Nano Banana (mock for now)
-      await this.updateProgress(jobId, itemIndex, 30);
-      const enhancedImages = await this.enhanceImages(
-        imageBuffer,
-        enhancedConfig
+      await this.updateProgress(jobId, itemIndex, 10);
+
+      // Generate enhanced images using OpenAI DALL-E 3
+      // Always generates 3 images: 1 catalog + 2 scenario
+      const scenario = enhancedConfig.scenario || 'table';
+
+      console.log(`[ImageEnhancementWorker] Generating 3 images (1 catalog + 2 ${scenario})`);
+      
+      await this.updateProgress(jobId, itemIndex, 20);
+      
+      const imageUrls = await openAIImageService.generateEnhancedImages(
+        productInfo.name,
+        productInfo.description || '',
+        scenario
       );
 
-      // Save enhanced images
-      await this.updateProgress(jobId, itemIndex, 80);
-      const savedImages = await this.saveEnhancedImages(enhancedImages);
+      // Download and save images
+      await this.updateProgress(jobId, itemIndex, 60);
+      const savedImages = await this.downloadAndSaveImages(imageUrls);
 
       await this.updateProgress(jobId, itemIndex, 100);
+
+      console.log(`[ImageEnhancementWorker] Successfully generated ${savedImages.length} images`);
 
       return {
         jobId,
@@ -70,42 +84,66 @@ export class ImageEnhancementWorker extends BaseWorker {
   }
 
   /**
-   * Enhance images using Google Nano Banana API
-   * TODO: Implement actual API integration
+   * Download images from URLs and save to storage
    */
-  private async enhanceImages(
-    imageBuffer: Buffer,
-    config: EnhancedImagesConfig
-  ): Promise<Buffer[]> {
-    console.log(`[ImageEnhancementWorker] Enhancing ${config.count} images...`);
+  private async downloadAndSaveImages(imageUrls: string[]): Promise<string[]> {
+    const savedPaths: string[] = [];
 
-    // Mock implementation - simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // Return mock enhanced images (same as original for now)
-    const enhancedImages: Buffer[] = [];
-    for (let i = 0; i < config.count; i++) {
-      enhancedImages.push(imageBuffer);
+    for (let i = 0; i < imageUrls.length; i++) {
+      try {
+        console.log(`[ImageEnhancementWorker] Downloading image ${i + 1}/${imageUrls.length}`);
+        
+        // Download image from OpenAI URL
+        const imageBuffer = await openAIImageService.downloadImage(imageUrls[i]);
+        
+        // Save to storage
+        const filename = storageService.generateFilename('png');
+        const relativePath = `enhanced/${filename}`;
+        await storageService.writeFile(relativePath, imageBuffer);
+        
+        const savedPath = `/uploads/${relativePath}`;
+        savedPaths.push(savedPath);
+        
+        console.log(`[ImageEnhancementWorker] Saved image ${i + 1}: ${savedPath}`);
+      } catch (error) {
+        console.error(`[ImageEnhancementWorker] Error downloading image ${i + 1}:`, error);
+        // Continue with other images even if one fails
+      }
     }
 
-    return enhancedImages;
+    console.log(`[ImageEnhancementWorker] Successfully saved ${savedPaths.length}/${imageUrls.length} images`);
+    return savedPaths;
   }
 
   /**
-   * Save enhanced images to storage
+   * Mock implementation when OpenAI is not configured
    */
-  private async saveEnhancedImages(images: Buffer[]): Promise<string[]> {
-    const savedPaths: string[] = [];
+  private async processMock(
+    jobId: string,
+    itemIndex: number,
+    config: EnhancedImagesConfig
+  ): Promise<WorkerJobResult> {
+    console.log(`[ImageEnhancementWorker] Using mock implementation`);
+    
+    await this.updateProgress(jobId, itemIndex, 50);
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    await this.updateProgress(jobId, itemIndex, 100);
 
-    for (let i = 0; i < images.length; i++) {
-      const filename = storageService.generateFilename('jpg');
-      const relativePath = `enhanced/${filename}`;
-      await storageService.writeFile(relativePath, images[i]);
-      savedPaths.push(`/uploads/${relativePath}`);
-    }
+    // Return mock result (always 3 images: 1 catalog + 2 scenario)
+    const mockImages = Array.from({ length: 3 }, (_, i) => 
+      `/uploads/enhanced/mock-${Date.now()}-${i}.png`
+    );
 
-    console.log(`[ImageEnhancementWorker] Saved ${savedPaths.length} images`);
-    return savedPaths;
+    return {
+      jobId,
+      itemIndex,
+      success: true,
+      result: {
+        images: mockImages,
+        count: mockImages.length,
+      },
+    };
   }
 }
 

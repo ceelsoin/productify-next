@@ -39,6 +39,7 @@ export enum JobStatus {
  */
 export interface EnhancedImagesConfig {
   count: number;
+  scenario?: string;
   style?: string;
   enhancementLevel?: 'basic' | 'standard' | 'premium';
 }

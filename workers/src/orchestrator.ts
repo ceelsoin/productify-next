@@ -4,7 +4,6 @@ import { Job as BullJob, Queue } from 'bull';
 import { mongoService } from './services/mongodb.service';
 import { queueManager } from './core/queue-manager';
 import { orchestrator } from './core/orchestrator';
-import { getPipeline } from './core/pipelines';
 
 dotenv.config({ path: join(__dirname, '../.env') });
 
@@ -36,18 +35,13 @@ class OrchestratorWorker {
       const { jobId, pipelineName } = job.data;
 
       try {
-        // Get pipeline definition
-        const pipeline = getPipeline(pipelineName);
-        if (!pipeline) {
-          throw new Error(`Pipeline "${pipelineName}" not found`);
-        }
+        console.log(`[Orchestrator] Starting dynamic pipeline for job ${jobId}`);
 
-        console.log(`[Orchestrator] Starting pipeline "${pipeline.name}" for job ${jobId}`);
+        // Start pipeline execution with null to create dynamic pipeline
+        // The orchestrator will read job.items and create a pipeline automatically
+        await orchestrator.startPipeline(jobId, null, pipelineName);
 
-        // Start pipeline execution (pass pipelineName as ID)
-        await orchestrator.startPipeline(jobId, pipeline, pipelineName);
-
-        return { success: true, jobId, pipeline: pipeline.name };
+        return { success: true, jobId, pipeline: 'dynamic-pipeline' };
       } catch (error) {
         console.error(`[Orchestrator] Error processing job:`, error);
         throw error;
