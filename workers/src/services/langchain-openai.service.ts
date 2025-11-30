@@ -3,18 +3,19 @@ import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 
 /**
  * LangChain OpenAI Service
- * Uses LangChain with OpenAI through OpenRouter
+ * Uses LangChain with OpenAI directly
  */
 class LangChainOpenAIService {
   private model: ChatOpenAI;
 
   constructor() {
-    const apiKey = process.env.OPENROUTER_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
     
     if (!apiKey) {
-      console.warn('[LangChain] OpenRouter API key not configured');
+      console.warn('[LangChain] OpenAI API key not configured');
+      console.warn('[LangChain] Set OPENAI_API_KEY in your .env file');
     } else {
-      console.log('[LangChain] API key configured');
+      console.log('[LangChain] OpenAI API key configured');
     }
 
     this.model = new ChatOpenAI({
@@ -22,13 +23,6 @@ class LangChainOpenAIService {
       temperature: 0.8,
       maxTokens: 500,
       openAIApiKey: apiKey,
-      configuration: {
-        baseURL: 'https://openrouter.ai/api/v1',
-        defaultHeaders: {
-          'HTTP-Referer': 'https://productify.app',
-          'X-Title': 'Productify',
-        },
-      },
     });
   }
 
@@ -41,7 +35,7 @@ class LangChainOpenAIService {
     platform: string,
     tone?: string
   ): Promise<string> {
-    const apiKey = process.env.OPENROUTER_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
     
     if (!apiKey) {
       console.warn('[LangChain] API key not set, returning mock response');

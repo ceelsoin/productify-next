@@ -9,7 +9,7 @@ import {
 } from '../core/types';
 import { mongoService } from '../services/mongodb.service';
 import { queueManager } from '../core/queue-manager';
-import { langChainOpenAIService } from '../services/langchain-openai.service';
+import { langChainAIService } from '../services/langchain-ai.service';
 
 dotenv.config({ path: join(__dirname, '../../.env') });
 
@@ -59,7 +59,7 @@ export class TextGenerationWorker extends BaseWorker {
   }
 
   /**
-   * Generate viral copy using LangChain with OpenAI (via OpenRouter)
+   * Generate viral copy using LangChain with OpenAI
    */
   private async generateViralCopy(
     productInfo: { name: string; description?: string },
@@ -68,8 +68,8 @@ export class TextGenerationWorker extends BaseWorker {
     console.log(`[TextGenerationWorker] Generating copy for ${config.platform} using LangChain + OpenAI...`);
 
     try {
-      // Use LangChain with OpenAI through OpenRouter
-      const copy = await langChainOpenAIService.generateViralCopy(
+      // Use LangChain with OpenAI directly
+      const copy = await langChainAIService.generateViralCopy(
         productInfo.name,
         productInfo.description,
         config.platform,
