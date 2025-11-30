@@ -8,7 +8,9 @@ import { CaptionGenerationWorker } from './workers/caption-generation.worker';
 import { VideoGenerationWorker } from './workers/video-generation.worker';
 
 // Load environment variables
-dotenv.config();
+dotenv.config({
+  path: "../.env"
+});
 
 // Track active workers
 const workers: Array<{

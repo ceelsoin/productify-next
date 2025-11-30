@@ -139,6 +139,7 @@ export async function POST(request: NextRequest) {
     // Criar job no banco de dados
     console.log('🗄️ Next.js Database:', Job.db.name);
     console.log('🗄️ Next.js Collection:', Job.collection.name);
+    console.log('🗄️ Next.js Collection Full Name:', Job.collection.collectionName);
     
     const job = await Job.create({
       user: user._id.toString(),
@@ -172,6 +173,14 @@ export async function POST(request: NextRequest) {
     });
     
     console.log('✅ Job criado no Next.js:', job._id);
+    
+    // Verificar se foi realmente salvo
+    const verifyJob = await Job.findById(job._id);
+    console.log('🔍 Verificação - Job encontrado no Next.js:', !!verifyJob);
+    
+    // Contar todos os jobs
+    const totalJobs = await Job.countDocuments();
+    console.log('📊 Total de jobs na collection (Next.js):', totalJobs);
 
     // Criar transação de débito
     await TransactionService.createJobDebit(

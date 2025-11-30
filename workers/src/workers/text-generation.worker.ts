@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { join } from 'path';
 import { Job as BullJob } from 'bull';
 import { BaseWorker } from '../core/base-worker';
 import {
@@ -9,7 +10,7 @@ import {
 import { mongoService } from '../services/mongodb.service';
 import { queueManager } from '../core/queue-manager';
 
-dotenv.config();
+dotenv.config({ path: join(__dirname, '../../.env') });
 
 /**
  * Text Generation Worker (VST)

@@ -63,6 +63,10 @@ export abstract class BaseWorker implements IWorker {
         // Update overall job status and progress
         await this.updateJobStatus(job.data.jobId);
 
+        // Notify orchestrator of completion
+        await queueManager.addJob('orchestrator-result', result);
+        console.log(`[Worker:${this.queueName}] Notified orchestrator of completion`);
+
         // Chain to next worker if specified
         if (result.success && result.nextWorker) {
           await queueManager.addJob(result.nextWorker.queue, result.nextWorker.data);

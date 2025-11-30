@@ -1,11 +1,12 @@
 import dotenv from 'dotenv';
+import { join } from 'path';
 import { Job as BullJob, Queue } from 'bull';
 import { mongoService } from './services/mongodb.service';
 import { queueManager } from './core/queue-manager';
 import { orchestrator } from './core/orchestrator';
 import { getPipeline } from './core/pipelines';
 
-dotenv.config();
+dotenv.config({ path: join(__dirname, '../.env') });
 
 interface OrchestratorJobData {
   jobId: string;
@@ -63,36 +64,19 @@ class OrchestratorWorker {
    * Setup listeners for worker completion events
    */
   private setupWorkerListeners() {
-    const workerQueues = [
-      'images-queue',
-      'text-queue',
-      'voiceover-queue',
-      'captions-queue',
-      'video-queue',
-    ];
+    // Listen to orchestrator-result queue for worker completions
+    const resultQueue = queueManager.getQueue('orchestrator-result');
 
-    workerQueues.forEach(queueName => {
-      const queue = queueManager.getQueue(queueName);
-
-      queue.on('completed', async (job: BullJob, result: unknown) => {
-        console.log(`[Orchestrator] Worker ${queueName} completed job ${job.id}`);
-        
-        // Notify orchestrator of completion
-        await orchestrator.handleStepComplete(result as any);
-      });
-
-      queue.on('failed', async (job: BullJob, error: Error) => {
-        console.error(`[Orchestrator] Worker ${queueName} failed job ${job.id}:`, error.message);
-        
-        // Notify orchestrator of failure
-        await orchestrator.handleStepComplete({
-          jobId: (job.data as any).jobId,
-          itemIndex: (job.data as any).itemIndex,
-          success: false,
-          error: error.message,
-        });
-      });
+    resultQueue.process(async (job: BullJob) => {
+      console.log(`[Orchestrator] Received worker result:`, job.data);
+      
+      // Notify orchestrator of completion
+      await orchestrator.handleStepComplete(job.data);
+      
+      return { success: true };
     });
+
+    console.log('[Orchestrator] Listening to worker results on orchestrator-result queue');
   }
 
   async stop() {

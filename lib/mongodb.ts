@@ -33,6 +33,9 @@ export async function connectDB() {
     };
 
     cached.promise = mongoose.connect(MONGODB_URI!, opts).then(mongoose => {
+      console.log('[Next.js MongoDB] URI (masked):', MONGODB_URI!.replace(/:[^:@]+@/, ':****@'));
+      console.log('[Next.js MongoDB] Connection host:', mongoose.connection.host);
+      console.log('[Next.js MongoDB] Database:', mongoose.connection.db?.databaseName);
       return mongoose;
     });
   }
