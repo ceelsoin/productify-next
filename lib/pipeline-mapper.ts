@@ -4,6 +4,7 @@
 export const JOB_ITEMS_TO_PIPELINE: Record<string, string> = {
   'enhanced-images': 'enhanced-images-only',
   'viral-copy': 'viral-copy-only',
+  'product-description': 'product-description-only',
   'voice-over': 'voice-over-only',
   'promotional-video': 'promotional-video-full',
 };
@@ -57,6 +58,11 @@ export function determinePipeline(items: Array<{ type: string }>): string {
   // Copy apenas
   if (types.includes('viral-copy')) {
     return 'viral-copy-only';
+  }
+
+  // Product description apenas
+  if (types.includes('product-description')) {
+    return 'product-description-only';
   }
 
   // Imagens apenas

@@ -151,6 +151,8 @@ class PipelineOrchestrator {
       jobId,
       itemIndex,
       type,
+      itemType: type, // Explicit type for routing
+      pipelineName: this.executions.get(jobId)?.pipeline.name, // Pipeline name for prompt lookup
       config,
       originalImage: job.originalImage,
       productInfo: job.productInfo,
