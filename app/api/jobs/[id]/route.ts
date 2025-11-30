@@ -1,20 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getToken } from 'next-auth/jwt';
 import { connectDB } from '@/lib/mongodb';
 import { Job } from '@/lib/models/Job';
+import { auth } from '@/lib/auth';
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
     // Verificar autenticação
-    const token = await getToken({
-      req: request,
-      secret: process.env.NEXTAUTH_SECRET,
-    });
+    const session = await auth();
 
-    if (!token || !token.email) {
+    if (!session || !session.user?.email) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
@@ -31,7 +28,7 @@ export async function GET(
     }
 
     // Verificar se o job pertence ao usuário autenticado
-    if (job.user !== token.id) {
+    if (job.user !== session.user.id) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
     }
 

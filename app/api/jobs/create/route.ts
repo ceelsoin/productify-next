@@ -1,21 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getToken } from 'next-auth/jwt';
 import { connectDB } from '@/lib/mongodb';
 import { User } from '@/lib/models/User';
 import { Job } from '@/lib/models/Job';
 import { writeFile } from 'fs/promises';
 import { join } from 'path';
 import { randomBytes } from 'crypto';
+import { auth } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
-    // Verificar autenticação
-    const token = await getToken({
-      req: request,
-      secret: process.env.NEXTAUTH_SECRET,
-    });
+    // Verificar autenticação usando auth() do NextAuth
+    const session = await auth();
 
-    if (!token || !token.email) {
+    console.log('🔐 Session:', session);
+
+    if (!session || !session.user?.email) {
       return NextResponse.json(
         { error: 'Não autenticado' },
         { status: 401 }
@@ -25,7 +24,7 @@ export async function POST(request: NextRequest) {
     await connectDB();
 
     // Buscar usuário
-    const user = await User.findOne({ email: token.email });
+    const user = await User.findOne({ email: session.user.email });
 
     if (!user) {
       return NextResponse.json(
