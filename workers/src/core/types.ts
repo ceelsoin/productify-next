@@ -7,6 +7,7 @@ export enum JobType {
   ENHANCED_IMAGES = 'enhanced-images',
   PROMOTIONAL_VIDEO = 'promotional-video',
   VIRAL_COPY = 'viral-copy',
+  PRODUCT_DESCRIPTION = 'product-description',
   VOICE_OVER = 'voice-over',
   CAPTIONS = 'captions'
 }
@@ -160,6 +161,8 @@ export interface WorkerJobData {
   jobId: string;
   itemIndex: number;
   type: JobType;
+  itemType?: JobType; // Explicit item type for routing
+  pipelineName?: string; // Pipeline name for prompt lookup
   config: JobItemConfig;
   originalImage: OriginalImage;
   productInfo: ProductInfo;
