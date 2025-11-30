@@ -1,50 +1,25 @@
-import axios, { AxiosInstance } from 'axios';
-
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
-
-interface OpenRouterMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-}
-
-interface OpenRouterResponse {
-  id: string;
-  model: string;
-  choices: Array<{
-    message: {
-      role: string;
-      content: string;
-    };
-    finish_reason: string;
-  }>;
-  usage: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-  };
-}
+import { OpenRouter } from '@openrouter/sdk';
 
 /**
  * OpenRouter API Service
- * Provides access to multiple AI models through OpenRouter
+ * Provides access to multiple AI models through OpenRouter using official SDK
  */
 class OpenRouterService {
-  private client: AxiosInstance;
+  private client: OpenRouter;
 
   constructor() {
-    if (!OPENROUTER_API_KEY) {
+    // Get API key at runtime to ensure env vars are loaded
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    
+    if (!apiKey) {
       console.warn('[OpenRouter] API key not configured. Using mock responses.');
+      console.warn('[OpenRouter] Set OPENROUTER_API_KEY in your .env file');
+    } else {
+      console.log('[OpenRouter] API key configured:', apiKey.substring(0, 20) + '...');
     }
 
-    this.client = axios.create({
-      baseURL: OPENROUTER_BASE_URL,
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://productify.app',
-        'X-Title': 'Productify',
-      },
+    this.client = new OpenRouter({
+      apiKey: apiKey,
     });
   }
 
@@ -53,14 +28,16 @@ class OpenRouterService {
    */
   async generateCompletion(
     model: string,
-    messages: OpenRouterMessage[],
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
     options?: {
       temperature?: number;
       maxTokens?: number;
       topP?: number;
     }
   ): Promise<string> {
-    if (!OPENROUTER_API_KEY) {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    
+    if (!apiKey) {
       console.warn('[OpenRouter] API key not set, returning mock response');
       return this.getMockResponse(messages);
     }
@@ -68,32 +45,27 @@ class OpenRouterService {
     try {
       console.log(`[OpenRouter] Generating completion with model: ${model}`);
       
-      const response = await this.client.post<OpenRouterResponse>('/chat/completions', {
+      const response = await this.client.chat.send({
         model,
         messages,
         temperature: options?.temperature ?? 0.7,
-        max_tokens: options?.maxTokens ?? 1000,
-        top_p: options?.topP ?? 1,
+        maxTokens: options?.maxTokens ?? 1000,
+        topP: options?.topP ?? 1,
+        stream: false,
       });
 
-      const content = response.data.choices[0]?.message?.content;
+      const content = response.choices?.[0]?.message?.content;
       
-      if (!content) {
+      if (!content || typeof content !== 'string') {
         throw new Error('No content in OpenRouter response');
       }
 
-      console.log(`[OpenRouter] Generated ${response.data.usage.completion_tokens} tokens`);
+      console.log(`[OpenRouter] Generated ${response.usage?.completionTokens || 0} tokens`);
       
       return content;
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        console.error('[OpenRouter] API Error:', {
-          status: error.response?.status,
-          data: error.response?.data,
-        });
-        throw new Error(`OpenRouter API error: ${error.response?.data?.error?.message || error.message}`);
-      }
-      throw error;
+      console.error('[OpenRouter] API Error:', error);
+      throw new Error(`OpenRouter API error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -125,7 +97,7 @@ Requirements:
 Generate the complete ${platform} post now:`;
 
     return this.generateCompletion(
-      'x-ai/grok-2-1212',
+      'x-ai/grok-beta',
       [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
@@ -140,7 +112,7 @@ Generate the complete ${platform} post now:`;
   /**
    * Mock response for testing without API key
    */
-  private getMockResponse(messages: OpenRouterMessage[]): string {
+  private getMockResponse(messages: Array<{ role: string; content: string }>): string {
     const lastMessage = messages[messages.length - 1];
     if (lastMessage.content.includes('instagram')) {
       return '🔥 Game-changer alert! Just discovered this amazing product and HAD to share!\n\n✨ Life just got easier\n💫 Quality you can feel\n🎯 Made for people who value excellence\n\nDon\'t sleep on this! Limited stock available.\n\n#ProductLaunch #Innovation #MustHave #LifestyleUpgrade #NewFavorite';

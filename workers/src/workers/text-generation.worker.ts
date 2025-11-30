@@ -9,7 +9,7 @@ import {
 } from '../core/types';
 import { mongoService } from '../services/mongodb.service';
 import { queueManager } from '../core/queue-manager';
-import { openRouterService } from '../services/openrouter.service';
+import { langChainOpenAIService } from '../services/langchain-openai.service';
 
 dotenv.config({ path: join(__dirname, '../../.env') });
 
@@ -59,17 +59,17 @@ export class TextGenerationWorker extends BaseWorker {
   }
 
   /**
-   * Generate viral copy using OpenRouter AI (Grok)
+   * Generate viral copy using LangChain with OpenAI (via OpenRouter)
    */
   private async generateViralCopy(
     productInfo: { name: string; description?: string },
     config: ViralCopyConfig
   ): Promise<string> {
-    console.log(`[TextGenerationWorker] Generating copy for ${config.platform} using Grok...`);
+    console.log(`[TextGenerationWorker] Generating copy for ${config.platform} using LangChain + OpenAI...`);
 
     try {
-      // Use OpenRouter with Grok model for viral copy generation
-      const copy = await openRouterService.generateViralCopy(
+      // Use LangChain with OpenAI through OpenRouter
+      const copy = await langChainOpenAIService.generateViralCopy(
         productInfo.name,
         productInfo.description,
         config.platform,
@@ -79,7 +79,7 @@ export class TextGenerationWorker extends BaseWorker {
       console.log(`[TextGenerationWorker] Successfully generated copy (${copy.length} chars)`);
       return copy;
     } catch (error) {
-      console.error(`[TextGenerationWorker] OpenRouter error, falling back to template:`, error);
+      console.error(`[TextGenerationWorker] LangChain error, falling back to template:`, error);
       
       // Fallback to template if API fails
       const platformTemplates: Record<string, string> = {
