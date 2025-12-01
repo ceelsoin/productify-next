@@ -18,6 +18,7 @@ import {
   Zap,
   Crown,
 } from 'lucide-react';
+import UsageChart from '@/components/credits/UsageChart';
 
 interface Transaction {
   _id: string;
@@ -191,6 +192,9 @@ export default function CreditsPage() {
           <p className="text-xs text-text-tertiary">créditos devolvidos</p>
         </div>
       </div>
+
+      {/* Gráfico de Uso */}
+      <UsageChart />
 
       {/* Planos de Crédito */}
       <div>
