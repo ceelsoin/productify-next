@@ -255,24 +255,33 @@ export default function GeneratePage() {
     reader.readAsDataURL(file);
   };
 
-  const handleDragEnter = (e: React.DragEvent<HTMLLabelElement>) => {
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragging(true);
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
   };
 
-  const handleDragLeave = (e: React.DragEvent<HTMLLabelElement>) => {
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragging(false);
+    // Only set dragging to false if we're leaving the div itself, not a child
+    if (e.currentTarget === e.target) {
+      setIsDragging(false);
+    }
   };
 
-  const handleDragOver = (e: React.DragEvent<HTMLLabelElement>) => {
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
+    // Set the dropEffect to show the copy cursor
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLLabelElement>) => {
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
@@ -520,7 +529,8 @@ export default function GeneratePage() {
                 </h2>
 
                 {!previewUrl ? (
-                  <label 
+                  <div
+                    onClick={() => document.getElementById('file-input')?.click()}
                     className={`group relative flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-12 transition-all ${
                       isDragging 
                         ? 'border-primary-500 bg-primary-500/10 scale-105' 
@@ -543,12 +553,13 @@ export default function GeneratePage() {
                       PNG, JPG ou WEBP até 10MB
                     </p>
                     <input
+                      id="file-input"
                       type="file"
                       className="hidden"
                       accept="image/*"
                       onChange={handleFileChange}
                     />
-                  </label>
+                  </div>
                 ) : (
                   <div className="relative">
                     <img
