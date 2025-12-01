@@ -9,6 +9,7 @@ import {
   WorkerJobResult,
 } from './types';
 import { Pipeline, validatePipeline } from './pipelines';
+import { RefundService } from '../services/refund.service';
 
 /**
  * Pipeline execution state
@@ -293,10 +294,30 @@ class PipelineOrchestrator {
     } else {
       console.error(`[Orchestrator] Item ${itemIndex} (${itemType}) failed for job ${jobId}:`, result.error);
       
+      // Count completed items before marking as failed
+      const completedItems = execution.completedItems.size;
+      const totalItems = job.items.length;
+      
       // Mark job as failed
       await Job.findByIdAndUpdate(jobId, {
-        $set: { status: JobStatus.FAILED, updatedAt: new Date() },
+        $set: { status: JobStatus.FAILED, failedAt: new Date(), updatedAt: new Date() },
       });
+      
+      // Process automatic refund based on completion
+      try {
+        console.log(`[Orchestrator] Processing refund for failed job ${jobId} (${completedItems}/${totalItems} completed)`);
+        
+        if (completedItems === 0) {
+          // Full refund if nothing completed
+          await RefundService.processJobFailureRefund(jobId);
+        } else if (completedItems < totalItems) {
+          // Partial refund if some items completed
+          await RefundService.processPartialRefund(jobId, completedItems, totalItems);
+        }
+      } catch (error) {
+        console.error(`[Orchestrator] Failed to process refund for job ${jobId}:`, error);
+      }
+      
       this.executions.delete(jobId);
     }
   }
