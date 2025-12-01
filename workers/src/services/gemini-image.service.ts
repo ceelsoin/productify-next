@@ -65,8 +65,23 @@ class GeminiImageService {
       const base64Image = imageBuffer.toString('base64');
       const mimeType = await this.detectMimeType(imageBuffer);
 
-      // Generate 4 variations: 1 catalog + 3 scenario-specific
-      const prompts = this.buildVariationPrompts(productName, productDescription, scenario);
+      // STEP 1: Analyze product context to understand proper placement
+      console.log(`[Gemini Images] Analyzing product context...`);
+      const productContext = await this.analyzeProductContext(
+        base64Image,
+        mimeType,
+        productName,
+        productDescription
+      );
+      console.log(`[Gemini Images] Product analysis:`, productContext);
+
+      // STEP 2: Generate 4 variations with context-aware prompts
+      const prompts = this.buildVariationPrompts(
+        productName, 
+        productDescription, 
+        scenario,
+        productContext
+      );
 
       for (let i = 0; i < prompts.length; i++) {
         try {
@@ -133,15 +148,104 @@ class GeminiImageService {
   }
 
   /**
+   * Analyze product context to understand proper placement and characteristics
+   */
+  private async analyzeProductContext(
+    base64Image: string,
+    mimeType: string,
+    productName: string,
+    productDescription: string
+  ): Promise<{
+    category: string;
+    mounting: string;
+    size: string;
+    usage: string;
+    placement: string;
+  }> {
+    if (!this.model) {
+      throw new Error('Model not initialized');
+    }
+
+    try {
+      const analysisPrompt = `Analyze this product image and provide context for photography placement.
+
+Product Name: ${productName}
+Description: ${productDescription || 'Not provided'}
+
+Please analyze and respond in JSON format with these fields:
+{
+  "category": "What type of product is this? (e.g., wall decor, desk accessory, jewelry, electronics, clothing, etc.)",
+  "mounting": "How is this product displayed/used? (e.g., hangs on wall, sits on surface, worn, held, mounted, etc.)",
+  "size": "Approximate size category (e.g., small/pocket-sized, medium/hand-sized, large/desktop, extra-large)",
+  "usage": "Primary use context (e.g., decoration, functional tool, wearable, display piece, etc.)",
+  "placement": "Best photography placement (e.g., hanging on wall, on flat surface, worn by model, held in hand, mounted display, etc.)"
+}
+
+Be specific and practical for product photography. Consider what makes sense for this actual product.`;
+
+      const result = await this.model.generateContent([
+        {
+          inlineData: {
+            data: base64Image,
+            mimeType: mimeType,
+          },
+        },
+        analysisPrompt,
+      ]);
+
+      const response = await result.response;
+      const text = response.text();
+      
+      // Extract JSON from response
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const context = JSON.parse(jsonMatch[0]);
+        return context;
+      }
+
+      // Fallback
+      return {
+        category: 'general product',
+        mounting: 'sits on surface',
+        size: 'medium',
+        usage: 'functional',
+        placement: 'on flat surface'
+      };
+    } catch (error) {
+      console.error('[Gemini Images] Error analyzing product context:', error);
+      // Return safe defaults
+      return {
+        category: 'general product',
+        mounting: 'sits on surface',
+        size: 'medium',
+        usage: 'functional',
+        placement: 'on flat surface'
+      };
+    }
+  }
+
+  /**
    * Build variation prompts: 1 catalog (white bg) + 3 scenario-specific
    * Prompts emphasize keeping the product IDENTICAL while changing background/lighting
+   * Uses product context analysis for appropriate placement
    */
   private buildVariationPrompts(
     productName: string,
     productDescription: string,
-    scenario: string
+    scenario: string,
+    productContext: {
+      category: string;
+      mounting: string;
+      size: string;
+      usage: string;
+      placement: string;
+    }
   ): string[] {
-    const baseContext = `Product: ${productName}${productDescription ? `\nDescription: ${productDescription}` : ''}`;
+    const baseContext = `Product: ${productName}${productDescription ? `\nDescription: ${productDescription}` : ''}
+Product Type: ${productContext.category}
+How it's used: ${productContext.mounting}
+Size: ${productContext.size}
+Best placement for photos: ${productContext.placement}`;
     
     // FIRST PROMPT: Always catalog style with white background
     const catalogPrompt = `${baseContext}
@@ -208,15 +312,26 @@ Product unchanged.`,
 
 CRITICAL: Keep product 100% identical. Only change surface and environment.
 
-NATURAL WOOD TABLE:
-- Surface: Beautiful oak or walnut table with visible natural grain
-- Texture: Rich wood with semi-matte finish
+IMPORTANT PLACEMENT RULE: 
+${productContext.mounting.toLowerCase().includes('wall') || productContext.mounting.toLowerCase().includes('hang') 
+  ? '⚠️ THIS PRODUCT HANGS ON A WALL - Show it mounted on a wall in background, NOT laying on table surface!'
+  : productContext.mounting.toLowerCase().includes('worn') || productContext.mounting.toLowerCase().includes('jewelry')
+  ? '⚠️ THIS IS A WEARABLE ITEM - Show it displayed/presented on surface, not randomly placed'
+  : '✓ This product sits on surfaces - Show it naturally placed on the table'}
+
+NATURAL WOOD SURFACE SCENE:
+- Setting: ${productContext.placement}
+${productContext.mounting.toLowerCase().includes('wall') || productContext.mounting.toLowerCase().includes('hang')
+  ? `- Background: Wooden wall or wood-paneled background where product is displayed
+- Product Position: Hanging/mounted on the wooden surface as intended
+- Angle: Straight-on or slightly angled to show it properly mounted`
+  : `- Surface: Beautiful oak or walnut table with visible natural grain
+- Product Position: Naturally resting/sitting on the wooden surface
+- Texture: Rich wood with semi-matte finish`}
 - Lighting: Soft natural window light from side (golden hour, 4000-5000K)
 - Shadow: Gentle natural shadows following light direction
 - Background: Softly blurred room or café setting (bokeh effect)
-- Elements: Maybe hint of plant or cup edge in soft focus (never covering product)
 - Atmosphere: Warm, inviting, cozy
-- Reflection: Subtle ambient occlusion where product meets wood
 
 Product unchanged.`,
 
@@ -224,13 +339,22 @@ Product unchanged.`,
 
 CRITICAL: Keep product 100% identical. Only change surface and environment.
 
-RUSTIC WORKSPACE:
-- Surface: Reclaimed or distressed wooden desk with character
-- Wood type: Lighter tones (pine, birch) with visible wear and patina
+PLACEMENT INSTRUCTION: ${productContext.placement}
+${productContext.mounting.toLowerCase().includes('wall') || productContext.mounting.toLowerCase().includes('hang')
+  ? '⚠️ WALL-MOUNTED PRODUCT - Must show hanging on wall, not on table!'
+  : ''}
+
+RUSTIC WOOD ENVIRONMENT:
+${productContext.mounting.toLowerCase().includes('wall') || productContext.mounting.toLowerCase().includes('hang')
+  ? `- Background: Reclaimed wood wall or barn wood paneling
+- Display: Product properly mounted/hanging as designed
+- Wood: Distressed finish with character and patina`
+  : `- Surface: Reclaimed wooden desk or workbench with character
+- Placement: Product sitting naturally on surface
+- Wood type: Lighter tones (pine, birch) with visible wear`}
 - Lighting: Bright natural daylight creating clean shadows
-- Background: Defocused home office or workshop (whites, creams)
-- Detail: Maybe fabric texture edge (linen) barely visible
-- Mood: Creative, artisan, authentic workspace
+- Background: Defocused home office or creative space
+- Mood: Artisan, authentic, crafted feel
 - Quality: Professional lifestyle photography
 
 Product unchanged.`,
@@ -239,15 +363,20 @@ Product unchanged.`,
 
 CRITICAL: Keep product 100% identical. Only change surface and environment.
 
-ELEGANT TABLE SETTING:
-- Surface: Polished dark mahogany or cherry wood with slight sheen
-- Finish: Semi-gloss premium furniture grade
-- Lighting: Balanced natural and interior lighting
-- Background: Upscale dining room or modern kitchen (bokeh)
-- Palette: Rich browns, warm ambers, neutral tones
-- Optional: Soft fabric (placemat) edge in neutral color
-- Feel: Sophisticated, refined, premium
-- Detail: Subtle reflections on polished surface
+CONTEXT-AWARE PLACEMENT: Based on product analysis - ${productContext.mounting}
+
+ELEGANT WOOD SETTING:
+${productContext.mounting.toLowerCase().includes('wall') || productContext.mounting.toLowerCase().includes('hang')
+  ? `- Environment: Sophisticated interior with dark wood wall paneling
+- Mounting: Product displayed as intended (hanging/mounted)
+- Wood: Polished mahogany or walnut paneling with elegant finish`
+  : `- Surface: Polished dark mahogany or cherry wood table
+- Placement: Product elegantly positioned on surface
+- Finish: Semi-gloss premium furniture grade`}
+- Lighting: Balanced natural and ambient interior lighting
+- Background: Upscale interior space with refined atmosphere
+- Palette: Rich browns, warm ambers, sophisticated tones
+- Feel: Premium, refined, elegant presentation
 
 Product unchanged.`,
       ],

@@ -143,10 +143,10 @@ export default function GeneratePage() {
   // Available scenarios for enhanced images
   const imageScenarios: ImageScenario[] = [
     { 
-      id: 'table', 
-      name: 'Mesa Profissional', 
+      id: 'house', 
+      name: 'Casa e Decoração', 
       preview: '🪑',
-      previewImage: '/templates/scenarios/table.jpg' // Placeholder - você pode adicionar imagens reais
+      previewImage: '/templates/scenarios/house.jpg' // Placeholder - você pode adicionar imagens reais
     },
     { 
       id: 'nature', 
