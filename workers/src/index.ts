@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import { mongoService } from './services/mongodb.service';
 import { queueManager } from './core/queue-manager';
+import { cleanupService } from './services/cleanup.service';
 import { ImageEnhancementWorker } from './workers/image-enhancement.worker';
 import { TextGenerationWorker } from './workers/text-generation.worker';
 import { VoiceOverWorker } from './workers/voiceover.worker';
@@ -74,6 +75,11 @@ async function startWorkers() {
     }
 
     console.log(`[Productify Workers] ${workers.length} worker(s) started successfully`);
+    
+    // Start cleanup service (runs every 15 minutes)
+    cleanupService.start(15);
+    console.log('[Productify Workers] Cleanup service started (checks every 15 minutes)');
+    
     console.log('[Productify Workers] Press Ctrl+C to stop');
   } catch (error) {
     console.error('[Productify Workers] Failed to start:', error);
@@ -88,6 +94,9 @@ async function shutdown() {
   console.log('\n[Productify Workers] Shutting down...');
 
   try {
+    // Stop cleanup service
+    cleanupService.stop();
+    
     // Stop all workers
     await Promise.all(workers.map(w => w.instance.stop()));
 

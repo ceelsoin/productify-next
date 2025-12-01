@@ -23,14 +23,12 @@ import {
 
 interface Transaction {
   _id: string;
-  productInfo: {
-    name: string;
-  };
-  totalCredits: number;
-  creditsSpent: number;
-  creditsRefunded: number;
+  type: 'job_debit' | 'job_refund';
+  productName: string;
+  amount: number; // Negativo para débito, positivo para crédito
   status: string;
   createdAt: string;
+  jobId?: string;
 }
 
 interface Stats {
@@ -328,27 +326,36 @@ export default function CreditsPage() {
                         {transactions.map((transaction) => (
                           <tr
                             key={transaction._id}
-                            className="border-b border-border transition-colors hover:bg-background-secondary"
+                            className={`border-b border-border transition-colors hover:bg-background-secondary ${
+                              transaction.type === 'job_refund' ? 'bg-green-500/5' : ''
+                            }`}
                           >
                             <td className="px-6 py-4">
-                              <p className="font-medium text-text-primary">
-                                {transaction.productInfo.name}
-                              </p>
+                              <div className="flex items-center gap-2">
+                                {transaction.type === 'job_refund' && (
+                                  <div className="rounded-full bg-green-500/20 px-2 py-0.5 text-xs font-medium text-green-400">
+                                    Reembolso
+                                  </div>
+                                )}
+                                <p className="font-medium text-text-primary">
+                                  {transaction.productName}
+                                </p>
+                              </div>
                             </td>
                             <td className="px-6 py-4">
                               <div className="flex items-center gap-2">
-                                {transaction.creditsRefunded > 0 ? (
+                                {transaction.amount > 0 ? (
                                   <>
                                     <TrendingUp className="h-4 w-4 text-green-400" />
                                     <span className="font-medium text-green-400">
-                                      +{transaction.creditsRefunded}
+                                      +{transaction.amount}
                                     </span>
                                   </>
                                 ) : (
                                   <>
                                     <TrendingDown className="h-4 w-4 text-orange-400" />
                                     <span className="font-medium text-orange-400">
-                                      -{transaction.creditsSpent}
+                                      {transaction.amount}
                                     </span>
                                   </>
                                 )}

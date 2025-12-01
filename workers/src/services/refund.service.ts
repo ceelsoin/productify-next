@@ -70,14 +70,13 @@ export class RefundService {
       job.user.toString(),
       jobId,
       refundAmount,
-      'Job falhou durante o processamento'
+      'Geração falhou durante o processamento'
     );
 
-    // Update job
+    // Update job - mantém status FAILED, apenas registra o reembolso
     await Job.findByIdAndUpdate(jobId, {
       $set: {
         creditsRefunded: refundAmount,
-        status: JobStatus.REFUNDED,
         refundedAt: new Date(),
       },
     });
@@ -122,7 +121,7 @@ export class RefundService {
       `Reembolso parcial: ${completedItems}/${totalItems} itens completados`
     );
 
-    // Update job
+    // Update job - mantém status atual (FAILED), apenas registra o reembolso
     await Job.findByIdAndUpdate(jobId, {
       $set: {
         creditsRefunded: refundAmount,
