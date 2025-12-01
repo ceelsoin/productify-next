@@ -42,6 +42,7 @@ export interface EnhancedImagesConfig {
   scenario?: string;
   style?: string;
   enhancementLevel?: 'basic' | 'standard' | 'premium';
+  orientation?: 'portrait' | 'square'; // Default: portrait (1024x1792), square (1024x1024)
 }
 
 /**

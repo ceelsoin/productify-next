@@ -10,7 +10,7 @@ import {
 import { mongoService } from '../services/mongodb.service';
 import { queueManager } from '../core/queue-manager';
 import { langChainAIService } from '../services/langchain-ai.service';
-import { getPipeline } from '../core/pipelines';
+import { getPromptConfigForJobType } from '../core/pipelines';
 import { PromptTemplateService } from '../services/prompt-template.service';
 
 dotenv.config({ path: join(__dirname, '../../.env') });
@@ -39,22 +39,17 @@ export class TextGenerationWorker extends BaseWorker {
     try {
       await this.updateProgress(jobId, itemIndex, 20);
 
-      // Get pipeline configuration
-      const pipeline = getPipeline(pipelineName || this.inferPipeline(itemType as JobType));
+      // Get prompt configuration for this job type
+      const promptConfig = getPromptConfigForJobType(itemType as JobType);
       
-      if (!pipeline) {
-        throw new Error(`Pipeline not found: ${pipelineName}`);
+      if (!promptConfig) {
+        throw new Error(`No prompt configuration found for job type: ${itemType}`);
       }
 
-      // Find the step for this job type
-      const step = pipeline.steps.find(s => s.type === itemType);
-      
-      if (!step || !step.promptConfig) {
-        throw new Error(`No prompt configuration found for ${itemType} in pipeline ${pipelineName}`);
-      }
+      console.log(`[TextGenerationWorker] Using prompt config for ${itemType}`);
 
-      // Generate text using pipeline prompt configuration
-      const text = await this.generateText(productInfo, config, step.promptConfig);
+      // Generate text using prompt configuration
+      const text = await this.generateText(productInfo, config, promptConfig);
       
       console.log(`[TextGenerationWorker] Generated text (${text.split(/\s+/).length} words):`);
       console.log(text.substring(0, 200) + '...');
@@ -81,20 +76,6 @@ export class TextGenerationWorker extends BaseWorker {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
       };
-    }
-  }
-
-  /**
-   * Infer pipeline name from job type (fallback)
-   */
-  private inferPipeline(jobType: JobType): string {
-    switch (jobType) {
-      case JobType.VIRAL_COPY:
-        return 'viral-copy-only';
-      case JobType.PRODUCT_DESCRIPTION:
-        return 'product-description-only';
-      default:
-        return 'viral-copy-only';
     }
   }
 

@@ -337,23 +337,85 @@ export function listPipelines(): Array<{ id: string; name: string; description: 
  */
 export function validatePipeline(pipeline: Pipeline): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
-  const completedTypes = new Set<JobType>();
+  
+  // Check if pipeline has steps
+  if (!pipeline.steps || pipeline.steps.length === 0) {
+    errors.push('Pipeline must have at least one step');
+    return { valid: false, errors };
+  }
 
+  // Build set of all step types in the pipeline
+  const availableTypes = new Set<JobType>(pipeline.steps.map(s => s.type));
+
+  // Validate that all dependencies exist in the pipeline
   for (const step of pipeline.steps) {
-    // Check if dependencies are satisfied
     if (step.dependsOn) {
       for (const dep of step.dependsOn) {
-        if (!completedTypes.has(dep)) {
-          errors.push(`Step ${step.type} depends on ${dep} which hasn't been completed yet`);
+        if (!availableTypes.has(dep)) {
+          errors.push(`Step ${step.type} depends on ${dep} which is not in the pipeline`);
         }
       }
     }
-
-    completedTypes.add(step.type);
   }
 
   return {
     valid: errors.length === 0,
     errors,
   };
+}
+
+/**
+ * Get prompt configuration for a specific job type
+ * This is used by workers to get prompt config without needing a pipeline
+ */
+export function getPromptConfigForJobType(jobType: JobType): TextPromptConfig | null {
+  // Define prompt configs for each job type
+  const promptConfigs: Partial<Record<JobType, TextPromptConfig>> = {
+    [JobType.VIRAL_COPY]: {
+      systemPrompt: `You are an expert social media copywriter specializing in creating viral, engaging content for {{platform}}.
+Your copy should be attention-grabbing, authentic, and optimized for {{platform}}'s audience and format.
+Always write in {{language}}.`,
+      userPromptTemplate: `Create compelling {{platform}} copy for this product:
+
+Product Name: {{productName}}
+{{#if productDescription}}Description: {{productDescription}}{{/if}}
+
+Requirements:
+- Platform: {{platform}}
+- Tone: {{tone}}
+- Language: {{language}}
+{{#if includeEmojis}}- Use emojis appropriately for {{platform}} to make the copy more engaging{{else}}- DO NOT use any emojis{{/if}}
+{{#if includeHashtags}}- Include relevant hashtags for {{platform}}{{else}}- DO NOT include hashtags{{/if}}
+- Keep it concise and impactful
+- Focus on benefits and value proposition
+- Optimize for {{platform}}'s best practices
+
+Generate the complete {{platform}} post now:`,
+      variables: ['platform', 'productName', 'productDescription', 'tone', 'language', 'includeEmojis', 'includeHashtags'],
+    },
+
+    [JobType.PRODUCT_DESCRIPTION]: {
+      systemPrompt: `You are an expert at writing product descriptions for {{style}} platforms.
+Your descriptions should be optimized for the target style and audience.
+Always write in {{language}}.`,
+      userPromptTemplate: `Create a professional product description:
+
+Product Name: {{productName}}
+{{#if productDescription}}Description: {{productDescription}}{{/if}}
+
+Requirements:
+- Style: {{style}}
+- Target Audience: {{targetAudience}}
+- Language: {{language}}
+{{#if includeEmojis}}- Use emojis to enhance readability{{else}}- DO NOT use any emojis{{/if}}
+- Make it compelling and conversion-focused
+- Highlight key features and benefits
+- Be clear and concise
+
+Generate the product description now:`,
+      variables: ['productName', 'productDescription', 'style', 'targetAudience', 'language', 'includeEmojis'],
+    },
+  };
+
+  return promptConfigs[jobType] || null;
 }

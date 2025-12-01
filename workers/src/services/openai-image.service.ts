@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import sharp from 'sharp';
 
 /**
  * OpenAI Image Generation Service
@@ -24,6 +25,54 @@ class OpenAIImageService {
   }
 
   /**
+   * Normalize image to PNG format and ensure it's under 4MB
+   * OpenAI requires PNG format and max 4MB for edit/variations
+   */
+  private async normalizeImage(imageBuffer: Buffer): Promise<Buffer> {
+    console.log(`[OpenAI Images] Normalizing image (${imageBuffer.length} bytes)`);
+
+    try {
+      // Convert to PNG and resize if needed to stay under 4MB
+      let normalized = await sharp(imageBuffer)
+        .png({ quality: 100, compressionLevel: 6 })
+        .toBuffer();
+
+      console.log(`[OpenAI Images] After PNG conversion: ${normalized.length} bytes`);
+
+      // If still over 4MB, progressively reduce quality
+      let quality = 90;
+      while (normalized.length > 4 * 1024 * 1024 && quality > 50) {
+        console.log(`[OpenAI Images] Image too large, reducing quality to ${quality}%`);
+        normalized = await sharp(imageBuffer)
+          .png({ quality, compressionLevel: 9 })
+          .toBuffer();
+        quality -= 10;
+      }
+
+      // If still too large, resize dimensions
+      if (normalized.length > 4 * 1024 * 1024) {
+        console.log(`[OpenAI Images] Still too large, resizing to 1024x1024`);
+        normalized = await sharp(imageBuffer)
+          .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+          .png({ quality: 80, compressionLevel: 9 })
+          .toBuffer();
+      }
+
+      const finalSizeMB = (normalized.length / (1024 * 1024)).toFixed(2);
+      console.log(`[OpenAI Images] Normalized image: ${finalSizeMB}MB`);
+
+      if (normalized.length > 4 * 1024 * 1024) {
+        throw new Error(`Image still too large after normalization: ${finalSizeMB}MB`);
+      }
+
+      return normalized;
+    } catch (error) {
+      console.error(`[OpenAI Images] Error normalizing image:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Check if the service is configured
    */
   isConfigured(): boolean {
@@ -31,78 +80,92 @@ class OpenAIImageService {
   }
 
   /**
-   * Generate enhanced product images using DALL-E 3
-   * Always generates 3 images: 1 catalog (white background) + 2 with chosen style
+   * Generate enhanced product images based on original image
+   * Creates faithful variations of the original image: 1 catalog + 2 styled variations
+   * Note: Currently limited to square (1024x1024) due to DALL-E 2 API limitations for variations/edits
    */
   async generateEnhancedImages(
     productName: string,
     productDescription: string,
-    scenario: string
+    scenario: string,
+    originalImageUrl: string,
+    orientation: 'portrait' | 'square' = 'portrait'
   ): Promise<string[]> {
     if (!this.client) {
       throw new Error('OpenAI client not configured. Please set OPENAI_API_KEY.');
     }
 
-    console.log(`[OpenAI Images] Generating 3 images for product: ${productName}`);
+    // Note: DALL-E 2 (used for variations and edits) only supports 1024x1024
+    // DALL-E 3 doesn't support variations/edits yet, so we're limited to square format
+    const imageSize = '1024x1024';
+    
+    if (orientation === 'portrait') {
+      console.log(`[OpenAI Images] ⚠️  Portrait orientation requested but limited to square due to DALL-E 2 API constraints`);
+    }
+    
+    console.log(`[OpenAI Images] Generating 3 enhanced variations from original image`);
+    console.log(`[OpenAI Images] Product: ${productName}`);
+    console.log(`[OpenAI Images] Original image: ${originalImageUrl}`);
     console.log(`[OpenAI Images] Scenario: ${scenario}`);
+    console.log(`[OpenAI Images] Size: ${imageSize} (square format)`);
 
     const imageUrls: string[] = [];
 
-    // 1. Generate catalog image (white background)
-    const catalogPrompt = this.buildPrompt(productName, productDescription, 'catalog');
-    console.log(`[OpenAI Images] Generating catalog image...`);
-    console.log(`[OpenAI Images] Catalog prompt: ${catalogPrompt.substring(0, 150)}...`);
+    // 1. Generate catalog variation (white background)
+    // Using createVariation for faithful reproduction
+    console.log(`[OpenAI Images] Creating catalog variation (white background)...`);
 
     try {
-      const catalogResponse = await this.client.images.generate({
-        model: 'dall-e-3',
-        prompt: catalogPrompt,
-        n: 1,
-        size: '1024x1024',
-        quality: 'standard',
-        style: 'natural', // Natural style for catalog images
-      });
-
-      if (catalogResponse.data && catalogResponse.data.length > 0 && catalogResponse.data[0].url) {
-        imageUrls.push(catalogResponse.data[0].url);
-        console.log(`[OpenAI Images] Catalog image generated (1/3)`);
+      const catalogVariations = await this.createVariations(originalImageUrl, 1);
+      if (catalogVariations.length > 0) {
+        imageUrls.push(catalogVariations[0]);
+        console.log(`[OpenAI Images] Catalog variation created (1/3)`);
       }
     } catch (error) {
-      console.error(`[OpenAI Images] Error generating catalog image:`, error);
-      throw error;
+      console.error(`[OpenAI Images] Error creating catalog variation:`, error);
+      // Try edit as fallback
+      try {
+        const catalogPrompt = `Make this product photo perfect for a catalog: clean white background, professional lighting, keep the product exactly as it is, only improve the background and lighting`;
+        const editedImage = await this.editImage(originalImageUrl, catalogPrompt);
+        imageUrls.push(editedImage);
+        console.log(`[OpenAI Images] Catalog variation created via edit (1/3)`);
+      } catch (editError) {
+        console.error(`[OpenAI Images] Edit fallback also failed:`, editError);
+        throw error;
+      }
     }
 
     // Delay between requests
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // 2. Generate 2 images with user-selected scenario
-    const scenarioPrompt = this.buildPrompt(productName, productDescription, scenario);
-    console.log(`[OpenAI Images] Generating scenario images (${scenario})...`);
-    console.log(`[OpenAI Images] Scenario prompt: ${scenarioPrompt.substring(0, 150)}...`);
+    // 2. Create 2 styled variations with user-selected scenario
+    console.log(`[OpenAI Images] Creating 2 styled variations (${scenario})...`);
+    const scenarioPrompt = this.buildEnhancementPrompt(scenario);
 
     for (let i = 0; i < 2; i++) {
       try {
-        const response = await this.client.images.generate({
-          model: 'dall-e-3',
-          prompt: scenarioPrompt,
-          n: 1,
-          size: '1024x1024',
-          quality: 'standard',
-          style: 'vivid', // Vivid style for lifestyle/scenario images
-        });
-
-        if (response.data && response.data.length > 0 && response.data[0].url) {
-          imageUrls.push(response.data[0].url);
-          console.log(`[OpenAI Images] Scenario image ${i + 1}/2 generated (${i + 2}/3 total)`);
-        }
+        // Use edit to maintain product fidelity while changing background/styling
+        const editedImage = await this.editImage(originalImageUrl, scenarioPrompt);
+        imageUrls.push(editedImage);
+        console.log(`[OpenAI Images] Styled variation ${i + 1}/2 created (${i + 2}/3 total)`);
 
         // Delay between requests to avoid rate limits
         if (i < 1) {
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
       } catch (error) {
-        console.error(`[OpenAI Images] Error generating scenario image ${i + 1}:`, error);
-        // Continue with available images even if one fails
+        console.error(`[OpenAI Images] Error creating styled variation ${i + 1}:`, error);
+        // Try creating a simple variation as fallback
+        try {
+          const variations = await this.createVariations(originalImageUrl, 1);
+          if (variations.length > 0) {
+            imageUrls.push(variations[0]);
+            console.log(`[OpenAI Images] Styled variation ${i + 1}/2 created via variation (${i + 2}/3 total)`);
+          }
+        } catch (varError) {
+          console.error(`[OpenAI Images] Variation fallback also failed:`, varError);
+          // Continue with available images
+        }
       }
     }
 
@@ -112,7 +175,7 @@ class OpenAIImageService {
 
   /**
    * Edit an existing image using DALL-E 2 (image editing)
-   * Note: DALL-E 3 doesn't support image editing yet
+   * Note: DALL-E 2 only supports 1024x1024 for edits
    */
   async editImage(
     imageUrl: string,
@@ -126,15 +189,19 @@ class OpenAIImageService {
     console.log(`[OpenAI Images] Editing image with prompt: ${prompt}`);
 
     try {
-      // Download the image
-      const imageResponse = await fetch(imageUrl);
-      const imageBlob = await imageResponse.blob();
+      // Download and normalize the image
+      const imageBuffer = await this.downloadImage(imageUrl);
+      const normalizedBuffer = await this.normalizeImage(imageBuffer);
+      
+      // Create File object from normalized buffer
+      const imageBlob = new Blob([normalizedBuffer], { type: 'image/png' });
       const imageFile = new File([imageBlob], 'image.png', { type: 'image/png' });
 
       let maskFile: File | undefined;
       if (maskUrl) {
-        const maskResponse = await fetch(maskUrl);
-        const maskBlob = await maskResponse.blob();
+        const maskBuffer = await this.downloadImage(maskUrl);
+        const normalizedMaskBuffer = await this.normalizeImage(maskBuffer);
+        const maskBlob = new Blob([normalizedMaskBuffer], { type: 'image/png' });
         maskFile = new File([maskBlob], 'mask.png', { type: 'image/png' });
       }
 
@@ -143,7 +210,7 @@ class OpenAIImageService {
         mask: maskFile,
         prompt,
         n: 1,
-        size: '1024x1024',
+        size: '1024x1024', // DALL-E 2 only supports 1024x1024
       });
 
       if (response.data && response.data.length > 0 && response.data[0].url) {
@@ -160,6 +227,7 @@ class OpenAIImageService {
 
   /**
    * Create variations of an existing image
+   * Note: DALL-E 2 only supports 1024x1024 for variations
    */
   async createVariations(
     imageUrl: string,
@@ -173,14 +241,19 @@ class OpenAIImageService {
 
     try {
       // Download the image
-      const imageResponse = await fetch(imageUrl);
-      const imageBlob = await imageResponse.blob();
+      const imageBuffer = await this.downloadImage(imageUrl);
+      
+      // Normalize to PNG and ensure under 4MB
+      const normalizedBuffer = await this.normalizeImage(imageBuffer);
+      
+      // Create File object from normalized buffer
+      const imageBlob = new Blob([normalizedBuffer], { type: 'image/png' });
       const imageFile = new File([imageBlob], 'image.png', { type: 'image/png' });
 
       const response = await this.client.images.createVariation({
         image: imageFile,
         n: Math.min(count, 10), // OpenAI limits to 10 variations
-        size: '1024x1024',
+        size: '1024x1024', // DALL-E 2 only supports 1024x1024
       });
 
       const imageUrls = (response.data || [])
@@ -196,35 +269,21 @@ class OpenAIImageService {
   }
 
   /**
-   * Build a detailed prompt for image generation
+   * Build enhancement prompt for image editing (faithful to original)
    */
-  private buildPrompt(
-    productName: string,
-    productDescription: string,
-    scenario: string
-  ): string {
-    // Map scenario to descriptive prompts (matching frontend scenarios)
+  private buildEnhancementPrompt(scenario: string): string {
+    // Prompts focused on enhancing background/lighting while keeping product EXACTLY as is
     const scenarioPrompts: Record<string, string> = {
-      'catalog': 'on a pure white background, professional catalog photography, clean and isolated product, studio lighting, no shadows, high quality, crisp and clear, commercial catalog style',
-      'table': 'on a professional wooden table or desk, elegant surface, natural wood texture, soft studio lighting, professional product photography, realistic shadows, clean and organized composition',
-      'nature': 'in a natural outdoor setting with plants and greenery, organic environment, natural daylight, botanical background, fresh and eco-friendly atmosphere, professional nature photography',
-      'minimal': 'in a minimalist setting, clean geometric shapes, neutral colors, modern and simple backdrop, minimal distractions, contemporary design, professional minimalist photography',
-      'lifestyle': 'in a lifestyle setting, home or everyday environment, natural scene with relevant context, realistic usage scenario, soft natural lighting, aesthetically pleasing composition, relatable atmosphere',
-      'studio': 'in a professional photography studio setup, dramatic lighting, elegant backdrop, perfect shadows and highlights, high-end commercial photography, sophisticated atmosphere',
-      'random': 'in a creative and unique setting, artistic composition, interesting background, professional photography with creative flair, unexpected but aesthetically pleasing environment',
+      'catalog': 'Replace the background with a pure white background for catalog photography. Keep the product EXACTLY as it is - do not change the product itself, only improve lighting and make background perfectly white and clean.',
+      'table': 'Place this product on a beautiful wooden table or desk. Keep the product EXACTLY as it is - only change the background to an elegant wooden surface with natural wood texture and professional lighting.',
+      'nature': 'Place this product in a natural outdoor setting with plants and greenery. Keep the product EXACTLY as it is - only change the background to a botanical environment with natural daylight.',
+      'minimal': 'Place this product in a minimalist setting with clean geometric shapes and neutral colors. Keep the product EXACTLY as it is - only change the background to a modern minimalist backdrop.',
+      'lifestyle': 'Place this product in a lifestyle/home environment. Keep the product EXACTLY as it is - only change the background to a natural home setting with soft natural lighting.',
+      'studio': 'Place this product in a professional studio setup with dramatic lighting. Keep the product EXACTLY as it is - only enhance the background and lighting to create a high-end studio atmosphere.',
+      'random': 'Place this product in a creative and artistic setting. Keep the product EXACTLY as it is - only change the background to something unique and aesthetically pleasing.',
     };
 
-    const scenarioDescription = scenarioPrompts[scenario] || scenarioPrompts['catalog'];
-
-    let prompt = `Professional product photography of ${productName}`;
-    
-    if (productDescription) {
-      prompt += `, ${productDescription}`;
-    }
-
-    prompt += `, ${scenarioDescription}. 8K resolution, highly detailed, realistic, commercial photography style.`;
-
-    return prompt;
+    return scenarioPrompts[scenario] || scenarioPrompts['catalog'];
   }
 
   /**

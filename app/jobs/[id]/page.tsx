@@ -24,6 +24,8 @@ interface JobItem {
   status: string;
   config?: any;
   result?: {
+    count?: number;
+    images?: string[];
     files?: string[];
     text?: string;
     error?: string;
@@ -296,6 +298,34 @@ export default function JobPage() {
                       {/* Results */}
                       {item.status === 'completed' && item.result && (
                         <div className="mt-3 border-t border-border pt-3">
+                          {item.result.images && item.result.images.length > 0 && (
+                            <div className="space-y-2">
+                              <p className="text-sm font-medium text-text-secondary">
+                                Imagens geradas: {item.result.count || item.result.images.length}
+                              </p>
+                              <div className="grid grid-cols-2 gap-3">
+                                {item.result.images.map((imageUrl, i) => (
+                                  <div
+                                    key={i}
+                                    className="group relative overflow-hidden rounded-lg border border-border bg-background-secondary"
+                                  >
+                                    <img
+                                      src={imageUrl}
+                                      alt={`Enhanced ${i + 1}`}
+                                      className="h-40 w-full object-cover transition-transform group-hover:scale-105"
+                                    />
+                                    <a
+                                      href={imageUrl}
+                                      download
+                                      className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100"
+                                    >
+                                      <Download className="h-6 w-6 text-white" />
+                                    </a>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           {item.result.files && item.result.files.length > 0 && (
                             <div className="space-y-2">
                               <p className="text-sm font-medium text-text-secondary">

@@ -25,14 +25,20 @@ export class ImageEnhancementWorker extends BaseWorker {
   async process(job: BullJob<WorkerJobData>): Promise<WorkerJobResult> {
     this.validateJobData(job);
 
-    const { jobId, itemIndex, config, productInfo } = job.data;
+    const { jobId, itemIndex, config, productInfo, originalImage } = job.data;
     const enhancedConfig = config as EnhancedImagesConfig;
 
     console.log(`[ImageEnhancementWorker] Processing job ${jobId}, item ${itemIndex}`);
     console.log(`[ImageEnhancementWorker] Product: ${productInfo.name}`);
+    console.log(`[ImageEnhancementWorker] Original image: ${originalImage?.url}`);
     console.log(`[ImageEnhancementWorker] Config:`, enhancedConfig);
 
     try {
+      // Check if original image exists
+      if (!originalImage || !originalImage.url) {
+        throw new Error('Original image is required for enhancement');
+      }
+
       // Check if OpenAI is configured
       if (!openAIImageService.isConfigured()) {
         console.warn('[ImageEnhancementWorker] OpenAI not configured, using mock implementation');
@@ -41,18 +47,29 @@ export class ImageEnhancementWorker extends BaseWorker {
 
       await this.updateProgress(jobId, itemIndex, 10);
 
-      // Generate enhanced images using OpenAI DALL-E 3
-      // Always generates 3 images: 1 catalog + 2 scenario
+      // Generate enhanced variations from original image
+      // Always generates 3 images: 1 catalog + 2 styled variations
       const scenario = enhancedConfig.scenario || 'table';
+      const orientation = enhancedConfig.orientation || 'portrait';
 
-      console.log(`[ImageEnhancementWorker] Generating 3 images (1 catalog + 2 ${scenario})`);
+      // Build full URL for original image
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      const originalImageUrl = originalImage.url.startsWith('http') 
+        ? originalImage.url 
+        : `${baseUrl}${originalImage.url}`;
+
+      console.log(`[ImageEnhancementWorker] Creating 3 enhanced variations (1 catalog + 2 ${scenario})`);
+      console.log(`[ImageEnhancementWorker] From original image: ${originalImageUrl}`);
+      console.log(`[ImageEnhancementWorker] Orientation: ${orientation}`);
       
       await this.updateProgress(jobId, itemIndex, 20);
       
       const imageUrls = await openAIImageService.generateEnhancedImages(
         productInfo.name,
         productInfo.description || '',
-        scenario
+        scenario,
+        originalImageUrl,
+        orientation
       );
 
       // Download and save images

@@ -763,55 +763,57 @@ export default function GeneratePage() {
                             {/* Enhanced Images Config */}
                             {option.id === 'enhanced-images' && (
                               <div className="space-y-4">
-                                <h4 className="flex items-center gap-2 text-sm font-medium text-text-primary">
-                                  <Info className="h-4 w-4" />
-                                  Escolha o Cenário
-                                </h4>
-                                <div className="grid grid-cols-3 gap-3">
-                                  {imageScenarios.map(scenario => (
-                                    <button
-                                      key={scenario.id}
-                                      onClick={() =>
-                                        updateConfig(
-                                          'enhancedImages',
-                                          'scenario',
+                                <div>
+                                  <h4 className="mb-3 flex items-center gap-2 text-sm font-medium text-text-primary">
+                                    <Info className="h-4 w-4" />
+                                    Escolha o Cenário
+                                  </h4>
+                                  <div className="grid grid-cols-3 gap-3">
+                                    {imageScenarios.map(scenario => (
+                                      <button
+                                        key={scenario.id}
+                                        onClick={() =>
+                                          updateConfig(
+                                            'enhancedImages',
+                                            'scenario',
+                                            scenario.id
+                                          )
+                                        }
+                                        className={`group relative overflow-hidden rounded-lg border transition-all ${
+                                          config.enhancedImages?.scenario ===
                                           scenario.id
-                                        )
-                                      }
-                                      className={`group relative overflow-hidden rounded-lg border transition-all ${
-                                        config.enhancedImages?.scenario ===
-                                        scenario.id
-                                          ? 'border-primary-500 ring-2 ring-primary-500/20'
-                                          : 'border-border hover:border-primary-500/50'
-                                      }`}
-                                    >
-                                      {/* Preview Image */}
-                                      <div className="relative aspect-square w-full overflow-hidden bg-background-secondary">
-                                        {scenario.previewImage ? (
-                                          <img
-                                            src={scenario.previewImage}
-                                            alt={scenario.name}
-                                            className="h-full w-full object-cover"
-                                            onError={(e) => {
-                                              // Fallback se a imagem não carregar
-                                              e.currentTarget.style.display = 'none';
-                                              e.currentTarget.nextElementSibling!.classList.remove('hidden');
-                                            }}
-                                          />
-                                        ) : null}
-                                        {/* Fallback emoji */}
-                                        <div className={`flex h-full w-full items-center justify-center text-4xl ${scenario.previewImage ? 'hidden' : ''}`}>
-                                          {scenario.preview}
+                                            ? 'border-primary-500 ring-2 ring-primary-500/20'
+                                            : 'border-border hover:border-primary-500/50'
+                                        }`}
+                                      >
+                                        {/* Preview Image */}
+                                        <div className="relative aspect-square w-full overflow-hidden bg-background-secondary">
+                                          {scenario.previewImage ? (
+                                            <img
+                                              src={scenario.previewImage}
+                                              alt={scenario.name}
+                                              className="h-full w-full object-cover"
+                                              onError={(e) => {
+                                                // Fallback se a imagem não carregar
+                                                e.currentTarget.style.display = 'none';
+                                                e.currentTarget.nextElementSibling!.classList.remove('hidden');
+                                              }}
+                                            />
+                                          ) : null}
+                                          {/* Fallback emoji */}
+                                          <div className={`flex h-full w-full items-center justify-center text-4xl ${scenario.previewImage ? 'hidden' : ''}`}>
+                                            {scenario.preview}
+                                          </div>
                                         </div>
-                                      </div>
-                                      {/* Scenario Name */}
-                                      <div className="p-2 text-center">
-                                        <div className="text-xs font-medium text-text-primary">
-                                          {scenario.name}
+                                        {/* Scenario Name */}
+                                        <div className="p-2 text-center">
+                                          <div className="text-xs font-medium text-text-primary">
+                                            {scenario.name}
+                                          </div>
                                         </div>
-                                      </div>
-                                    </button>
-                                  ))}
+                                      </button>
+                                    ))}
+                                  </div>
                                 </div>
                               </div>
                             )}
