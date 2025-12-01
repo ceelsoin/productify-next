@@ -10,13 +10,14 @@ import {
 import { storageService } from '../services/storage.service';
 import { mongoService } from '../services/mongodb.service';
 import { queueManager } from '../core/queue-manager';
-import { geminiImageService } from '../services/gemini-image.service';
+import { openAIImageService } from '../services/openai-image.service';
 
 dotenv.config({ path: join(__dirname, '../../.env') });
 
 /**
  * Image Enhancement Worker
- * Processes enhanced-images generation using Google Gemini Imagen
+ * Processes enhanced-images generation using OpenAI DALL-E
+ * Note: Google Gemini doesn't support image generation via SDK yet
  */
 export class ImageEnhancementWorker extends BaseWorker {
   queueName = 'images-queue';
@@ -39,16 +40,16 @@ export class ImageEnhancementWorker extends BaseWorker {
         throw new Error('Original image is required for enhancement');
       }
 
-      // Check if Gemini is configured
-      if (!geminiImageService.isConfigured()) {
-        console.warn('[ImageEnhancementWorker] Gemini not configured, using mock implementation');
+      // Check if OpenAI is configured
+      if (!openAIImageService.isConfigured()) {
+        console.warn('[ImageEnhancementWorker] OpenAI not configured, using mock implementation');
         return await this.processMock(jobId, itemIndex, enhancedConfig);
       }
 
       await this.updateProgress(jobId, itemIndex, 10);
 
       // Generate enhanced variations from original image
-      // Always generates 3 high-quality variations
+      // Uses DALL-E 2 createVariations() for maximum fidelity
       const scenario = enhancedConfig.scenario || 'table';
 
       // Build full URL for original image
@@ -57,21 +58,21 @@ export class ImageEnhancementWorker extends BaseWorker {
         ? originalImage.url 
         : `${baseUrl}${originalImage.url}`;
 
-      console.log(`[ImageEnhancementWorker] Creating 3 enhanced variations with scenario: ${scenario}`);
+      console.log(`[ImageEnhancementWorker] Creating 3 faithful variations with scenario: ${scenario}`);
       console.log(`[ImageEnhancementWorker] From original image: ${originalImageUrl}`);
       
       await this.updateProgress(jobId, itemIndex, 20);
       
-      const imageUrls = await geminiImageService.generateEnhancedImages(
+      const imageUrls = await openAIImageService.generateEnhancedImages(
         productInfo.name,
         productInfo.description || '',
         scenario,
         originalImageUrl
       );
 
-      // Images are already saved by geminiImageService
+      // Download and save images from OpenAI URLs
       await this.updateProgress(jobId, itemIndex, 60);
-      const savedImages = imageUrls; // Gemini service returns saved paths directly
+      const savedImages = await this.downloadAndSaveImages(imageUrls);
 
       await this.updateProgress(jobId, itemIndex, 100);
 
