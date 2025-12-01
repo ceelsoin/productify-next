@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     // Parsear query params
     const searchParams = request.nextUrl.searchParams;
     const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
+    const limit = parseInt(searchParams.get('limit') || '9');
     const search = searchParams.get('search') || '';
     const status = searchParams.get('status');
     const dateFilter = searchParams.get('dateFilter');
