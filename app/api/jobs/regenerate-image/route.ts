@@ -38,8 +38,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verificar se o usuário é dono do job
-    if (job.userId.toString() !== session.user.id) {
+    // Verificar se o usuário é dono do job (job.user é o ObjectId do usuário)
+    if (job.user.toString() !== session.user.id) {
       return NextResponse.json(
         { error: 'Não autorizado' },
         { status: 403 }

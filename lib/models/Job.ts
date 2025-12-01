@@ -190,5 +190,7 @@ const JobSchema = new Schema<IJob>(
 // Índices compostos para queries comuns
 JobSchema.index({ user: 1, createdAt: -1 });
 JobSchema.index({ user: 1, status: 1 });
+// Índice de texto para busca por nome do produto
+JobSchema.index({ 'productInfo.name': 'text' });
 
 export const Job = models.Job || model<IJob>('Job', JobSchema);

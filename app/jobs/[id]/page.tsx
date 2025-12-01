@@ -55,6 +55,7 @@ export default function JobPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [regeneratingImages, setRegeneratingImages] = useState<Set<string>>(new Set());
+  const [imageUrls, setImageUrls] = useState<Map<string, string>>(new Map());
 
   const jobId = params.id as string;
 
@@ -80,7 +81,32 @@ export default function JobPage() {
       }
 
       console.log('📥 Job recebido:', JSON.stringify(data.job, null, 2));
-      setJob(data.job);
+      
+      // Detectar mudanças nas URLs das imagens para limpar estado de regeneração
+      const newJob = data.job;
+      const newImageUrls = new Map<string, string>();
+      
+      newJob.items?.forEach((item: JobItem, itemIndex: number) => {
+        if (item.result?.images) {
+          item.result.images.forEach((url: string, imageIndex: number) => {
+            const key = `${itemIndex}-${imageIndex}`;
+            newImageUrls.set(key, url);
+            
+            // Se a URL mudou e estava regenerando, limpar o estado
+            const oldUrl = imageUrls.get(key);
+            if (oldUrl && oldUrl !== url && regeneratingImages.has(key)) {
+              setRegeneratingImages(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(key);
+                return newSet;
+              });
+            }
+          });
+        }
+      });
+      
+      setImageUrls(newImageUrls);
+      setJob(newJob);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar trabalho');
     } finally {

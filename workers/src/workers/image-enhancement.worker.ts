@@ -11,6 +11,7 @@ import { storageService } from '../services/storage.service';
 import { mongoService } from '../services/mongodb.service';
 import { queueManager } from '../core/queue-manager';
 import { geminiImageService } from '../services/gemini-image.service';
+import { Job as JobModel } from '../models/job.model';
 
 dotenv.config({ path: join(__dirname, '../../.env') });
 
@@ -62,13 +63,40 @@ export class ImageEnhancementWorker extends BaseWorker {
       
       await this.updateProgress(jobId, itemIndex, 20);
       
-      // Gemini service returns already saved image paths
-      const savedImages = await geminiImageService.generateEnhancedImages(
-        productInfo.name,
-        productInfo.description || '',
-        scenario,
-        originalImageUrl
-      );
+      // Check if we're regenerating a specific image
+      const regenerateIndex = (enhancedConfig as any).regenerateIndex;
+      let savedImages: string[];
+      
+      if (regenerateIndex !== undefined) {
+        console.log(`[ImageEnhancementWorker] Regenerating only image at index ${regenerateIndex}`);
+        
+        // Get current job from DB to retrieve existing images
+        const dbJob = await JobModel.findById(jobId);
+        const currentImages = dbJob?.items[itemIndex]?.result?.images || [];
+        
+        // Generate only the specific image
+        const newImage = await geminiImageService.generateSingleEnhancedImage(
+          productInfo.name,
+          productInfo.description || '',
+          scenario,
+          originalImageUrl,
+          regenerateIndex
+        );
+        
+        // Replace the image at the specified index
+        savedImages = [...currentImages];
+        savedImages[regenerateIndex] = newImage;
+        
+        console.log(`[ImageEnhancementWorker] Replaced image at index ${regenerateIndex}: ${newImage}`);
+      } else {
+        // Generate all 4 images normally
+        savedImages = await geminiImageService.generateEnhancedImages(
+          productInfo.name,
+          productInfo.description || '',
+          scenario,
+          originalImageUrl
+        );
+      }
 
       await this.updateProgress(jobId, itemIndex, 60);
 

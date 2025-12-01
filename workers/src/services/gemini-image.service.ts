@@ -261,6 +261,7 @@ CATALOG IMAGE REQUIREMENTS:
 - Style: E-commerce catalog photography (like Amazon, Apple product pages)
 - Exposure: Bright but not overexposed, showing true product colors
 - NO props, decorations, or background elements - just product on white
+- Extras: if product is an accessory of another product, try to include the main product mockup beside or near it
 
 The product itself must remain COMPLETELY UNCHANGED.`;
 
@@ -715,6 +716,96 @@ Product unchanged.`,
       return buffer;
     } catch (error) {
       console.error(`[Gemini Images] Error downloading image:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate a single enhanced image (for regeneration)
+   * @param imageIndex Index of the image to generate (0=catalog, 1-3=scenario variations)
+   */
+  async generateSingleEnhancedImage(
+    productName: string,
+    productDescription: string,
+    scenario: string,
+    originalImageUrl: string,
+    imageIndex: number
+  ): Promise<string> {
+    if (!this.model) {
+      throw new Error('Gemini client not configured. Please set GOOGLE_API_KEY or GEMINI_API_KEY.');
+    }
+
+    console.log(`[Gemini Images] Regenerating single image at index ${imageIndex}`);
+    console.log(`[Gemini Images] Product: ${productName}`);
+    console.log(`[Gemini Images] Scenario: ${scenario}`);
+
+    try {
+      // Download and prepare the original image
+      const imageBuffer = await this.downloadImage(originalImageUrl);
+      const base64Image = imageBuffer.toString('base64');
+      const mimeType = await this.detectMimeType(imageBuffer);
+
+      // Analyze product context
+      const productContext = await this.analyzeProductContext(
+        base64Image,
+        mimeType,
+        productName,
+        productDescription
+      );
+
+      // Build prompts and get the specific one
+      const prompts = this.buildVariationPrompts(
+        productName, 
+        productDescription, 
+        scenario,
+        productContext
+      );
+
+      if (imageIndex < 0 || imageIndex >= prompts.length) {
+        throw new Error(`Invalid image index: ${imageIndex}. Must be between 0 and ${prompts.length - 1}`);
+      }
+
+      const prompt = prompts[imageIndex];
+      const imageType = imageIndex === 0 ? 'CATALOG' : `${scenario.toUpperCase()} ${imageIndex}`;
+      
+      console.log(`[Gemini Images] Generating ${imageType}...`);
+      console.log(`[Gemini Images] Prompt: ${prompt.substring(0, 150)}...`);
+      
+      // Generate image using original as reference
+      const result = await this.model.generateContent([
+        {
+          inlineData: {
+            data: base64Image,
+            mimeType: mimeType,
+          },
+        },
+        prompt,
+      ]);
+
+      const response = await result.response;
+      const parts = response.candidates?.[0]?.content?.parts;
+
+      if (parts && parts.length > 0) {
+        const imagePart = parts.find(part => 'inlineData' in part && part.inlineData);
+        
+        if (imagePart && 'inlineData' in imagePart && imagePart.inlineData) {
+          // Save the generated image with appropriate prefix
+          const prefix = imageIndex === 0 ? 'catalog' : `${scenario}-${imageIndex}`;
+          const savedUrl = await this.saveGeneratedImage(
+            Buffer.from(imagePart.inlineData.data, 'base64'),
+            prefix
+          );
+          console.log(`[Gemini Images] ${imageType} regenerated successfully: ${savedUrl}`);
+          return savedUrl;
+        } else {
+          throw new Error(`No image data in response for ${imageType}`);
+        }
+      } else {
+        throw new Error(`No parts in response for ${imageType}`);
+      }
+
+    } catch (error) {
+      console.error(`[Gemini Images] Error regenerating image at index ${imageIndex}:`, error);
       throw error;
     }
   }
