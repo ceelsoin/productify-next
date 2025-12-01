@@ -22,19 +22,25 @@ export async function POST(req: NextRequest) {
       creditsRefunded,
     });
 
+    // ✅ Sempre retorna 200 mesmo se email falhar (evita bloquear o sistema)
+    // Email é opcional - o importante é que o job foi marcado como falho
     if (result.success) {
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ success: true, emailSent: true });
     } else {
-      return NextResponse.json(
-        { error: 'Failed to send notification' },
-        { status: 500 }
-      );
+      console.warn('⚠️ Email notification failed but job was marked as failed');
+      return NextResponse.json({ 
+        success: true, 
+        emailSent: false,
+        reason: 'Email service unavailable' 
+      });
     }
   } catch (error) {
-    console.error('Error sending job failed notification:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    console.error('❌ Error in job failed notification endpoint:', error);
+    // Mesmo com erro, retorna 200 para não bloquear o sistema
+    return NextResponse.json({ 
+      success: true, 
+      emailSent: false,
+      reason: 'Notification service error' 
+    });
   }
 }
