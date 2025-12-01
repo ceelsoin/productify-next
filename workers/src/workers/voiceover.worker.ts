@@ -10,16 +10,26 @@ import {
 import { storageService } from '../services/storage.service';
 import { mongoService } from '../services/mongodb.service';
 import { queueManager } from '../core/queue-manager';
+import { OpenAI } from 'openai';
+import { Job as JobModel } from '../models/job.model';
 
 dotenv.config({ path: join(__dirname, '../../.env') });
 
 /**
  * Voice-Over Generation Worker
- * Generates voice-overs using Google TTS
+ * Generates voice-overs using OpenAI TTS
  */
 export class VoiceOverWorker extends BaseWorker {
   queueName = 'voiceover-queue';
   concurrency = 3; // Process 3 jobs at a time
+  private openai: OpenAI;
+
+  constructor() {
+    super();
+    this.openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
 
   async process(job: BullJob<WorkerJobData>): Promise<WorkerJobResult> {
     this.validateJobData(job);
@@ -31,15 +41,27 @@ export class VoiceOverWorker extends BaseWorker {
     console.log(`[VoiceOverWorker] Config:`, voiceConfig);
 
     try {
-      // Get text to convert to speech
-      const text = previousResults?.text || '';
-      if (!text) {
-        throw new Error('No text found for voice-over generation');
+      // Get job from database
+      const jobDoc = await JobModel.findById(jobId);
+      if (!jobDoc) {
+        throw new Error('Job not found');
       }
 
-      // Generate voice-over with Google TTS
-      await this.updateProgress(jobId, itemIndex, 30);
-      const audioBuffer = await this.generateVoiceOver(text, voiceConfig);
+      // Get or generate script
+      let script = voiceConfig.scriptText;
+      
+      if (!script) {
+        console.log('[VoiceOverWorker] Generating script...');
+        await this.updateProgress(jobId, itemIndex, 20);
+        script = await this.generateScript(
+          jobDoc.productInfo.name,
+          jobDoc.productInfo.description
+        );
+      }
+
+      // Generate voice-over with OpenAI TTS
+      await this.updateProgress(jobId, itemIndex, 50);
+      const audioBuffer = await this.generateVoiceOver(script, voiceConfig);
 
       // Save audio file
       await this.updateProgress(jobId, itemIndex, 80);
@@ -53,8 +75,10 @@ export class VoiceOverWorker extends BaseWorker {
         success: true,
         result: {
           audioUrl: audioPath,
-          duration: this.estimateAudioDuration(text),
+          script,
+          duration: this.estimateAudioDuration(script),
           format: 'mp3',
+          voice: voiceConfig.voice || 'nova',
           language: voiceConfig.language,
         },
       };
@@ -70,22 +94,64 @@ export class VoiceOverWorker extends BaseWorker {
   }
 
   /**
-   * Generate voice-over using Google TTS
-   * TODO: Implement actual Google TTS integration
+   * Generate script for voice-over using GPT-4
+   */
+  private async generateScript(
+    productName: string,
+    productDescription: string
+  ): Promise<string> {
+    const completion = await this.openai.chat.completions.create({
+      model: 'gpt-4',
+      messages: [
+        {
+          role: 'system',
+          content: `Você é um roteirista especializado em criar scripts para narrações de vídeos promocionais de produtos.
+Crie um script curto, envolvente e persuasivo de 30-45 segundos.
+O script deve:
+- Começar com um gancho atraente
+- Destacar os principais benefícios do produto
+- Incluir um call-to-action no final
+- Ser natural para narração em voz
+- Ser em português do Brasil`,
+        },
+        {
+          role: 'user',
+          content: `Produto: ${productName}\nDescrição: ${productDescription}`,
+        },
+      ],
+      temperature: 0.7,
+      max_tokens: 200,
+    });
+
+    return completion.choices[0].message.content || '';
+  }
+
+  /**
+   * Generate voice-over using OpenAI TTS
    */
   private async generateVoiceOver(
     text: string,
     config: VoiceOverConfig
   ): Promise<Buffer> {
-    console.log(`[VoiceOverWorker] Generating voice-over...`);
+    const voice = config.voice || 'nova';
+    const model = config.model || 'tts-1-hd';
+    const speed = config.speed || 1.0;
+
+    console.log(`[VoiceOverWorker] Generating voice-over with OpenAI TTS...`);
     console.log(`[VoiceOverWorker] Text length: ${text.length} characters`);
-    console.log(`[VoiceOverWorker] Language: ${config.language}`);
+    console.log(`[VoiceOverWorker] Voice: ${voice}, Model: ${model}, Speed: ${speed}`);
 
-    // Mock implementation - simulate TTS API call
-    await new Promise(resolve => setTimeout(resolve, 4000));
+    const mp3 = await this.openai.audio.speech.create({
+      model,
+      voice,
+      input: text,
+      speed,
+    });
 
-    // Return mock audio buffer (empty for now)
-    return Buffer.from([]);
+    const buffer = Buffer.from(await mp3.arrayBuffer());
+    console.log(`[VoiceOverWorker] Generated audio buffer: ${buffer.length} bytes`);
+
+    return buffer;
   }
 
   /**

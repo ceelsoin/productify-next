@@ -91,9 +91,9 @@ class PipelineOrchestrator {
       'enhanced-images': [],
       'viral-copy': [],
       'product-description': [],
-      'voice-over': ['viral-copy', 'product-description'], // Pode usar qualquer texto gerado
-      'captions': ['voice-over'],
-      'promotional-video': ['enhanced-images'],
+      'voice-over': ['viral-copy', 'product-description'], // Can use any generated text
+      'captions': ['voice-over'], // Requires voiceover audio for transcription
+      'promotional-video': ['enhanced-images', 'voice-over', 'captions'], // Requires images, optional audio/captions
     };
 
     // Criar conjunto de tipos presentes no job

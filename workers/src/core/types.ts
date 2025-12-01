@@ -52,8 +52,11 @@ export interface PromotionalVideoConfig {
   duration: number;
   style?: string;
   template?: string;
-  includeVoiceover?: boolean;
-  includeCaptions?: boolean;
+  audioType: 'voiceover' | 'ambient'; // VST (narração) ou música ambiente
+  ambientMusicId?: string; // ID da música ambiente selecionada
+  includeCaptions?: boolean; // Legendas (requer voiceover)
+  transitions?: 'fade' | 'slide' | 'zoom';
+  textOverlay?: boolean;
 }
 
 /**
@@ -79,21 +82,23 @@ export interface ProductDescriptionConfig {
 }
 
 /**
- * Configuration for voice-over
+ * Configuration for voice-over (narração com OpenAI TTS)
  */
 export interface VoiceOverConfig {
   language: string;
-  voice?: string;
-  speed?: number;
-  pitch?: number;
+  voice?: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer'; // OpenAI TTS voices
+  speed?: number; // 0.25 to 4.0
+  model?: 'tts-1' | 'tts-1-hd';
+  scriptText?: string; // Texto para narrar (gerado automaticamente se não fornecido)
 }
 
 /**
- * Configuration for captions
+ * Configuration for captions (transcrição com Whisper.cpp)
  */
 export interface CaptionsConfig {
+  audioUrl: string; // URL do áudio para transcrever
   language?: string;
-  format?: 'srt' | 'vtt' | 'txt';
+  format?: 'srt' | 'vtt' | 'json'; // JSON para usar no Remotion
 }
 
 /**
