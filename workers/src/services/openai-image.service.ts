@@ -111,61 +111,47 @@ class OpenAIImageService {
 
     const imageUrls: string[] = [];
 
-    // 1. Generate catalog variation (white background)
-    // Using createVariation for faithful reproduction
-    console.log(`[OpenAI Images] Creating catalog variation (white background)...`);
-
     try {
-      const catalogVariations = await this.createVariations(originalImageUrl, 1);
-      if (catalogVariations.length > 0) {
-        imageUrls.push(catalogVariations[0]);
-        console.log(`[OpenAI Images] Catalog variation created (1/3)`);
+      // Strategy: Use createVariations() which maintains HIGH fidelity to original product
+      // This API preserves the product's appearance much better than edit/generation
+      console.log(`[OpenAI Images] Creating 3 faithful variations of the original product...`);
+      
+      const variations = await this.createVariations(originalImageUrl, 3);
+      
+      if (variations.length > 0) {
+        imageUrls.push(...variations);
+        console.log(`[OpenAI Images] Successfully created ${variations.length}/3 faithful variations`);
       }
+      
+      // If we got fewer than 3, try to complete with additional requests
+      if (variations.length < 3) {
+        console.log(`[OpenAI Images] Only got ${variations.length} variations, requesting more...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        try {
+          const additionalCount = 3 - variations.length;
+          const additional = await this.createVariations(originalImageUrl, additionalCount);
+          imageUrls.push(...additional);
+          console.log(`[OpenAI Images] Added ${additional.length} more variations, total: ${imageUrls.length}/3`);
+        } catch (error) {
+          console.error(`[OpenAI Images] Could not get additional variations:`, error);
+        }
+      }
+      
     } catch (error) {
-      console.error(`[OpenAI Images] Error creating catalog variation:`, error);
-      // Try edit as fallback
+      console.error(`[OpenAI Images] Error in variation creation:`, error);
+      
+      // Fallback: try edit approach with very strict prompts
+      console.log(`[OpenAI Images] Falling back to edit approach...`);
+      
       try {
-        const catalogPrompt = `Make this product photo perfect for a catalog: clean white background, professional lighting, keep the product exactly as it is, only improve the background and lighting`;
+        const catalogPrompt = `Create a professional product photo with clean white background. The product must be EXACTLY identical to the original - same size, same colors, same design, same details, same proportions. Only change the background to pure white and improve lighting. The product itself CANNOT change at all.`;
         const editedImage = await this.editImage(originalImageUrl, catalogPrompt);
         imageUrls.push(editedImage);
-        console.log(`[OpenAI Images] Catalog variation created via edit (1/3)`);
+        console.log(`[OpenAI Images] Created 1 image via edit (${imageUrls.length}/3)`);
       } catch (editError) {
         console.error(`[OpenAI Images] Edit fallback also failed:`, editError);
-        throw error;
-      }
-    }
-
-    // Delay between requests
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    // 2. Create 2 styled variations with user-selected scenario
-    console.log(`[OpenAI Images] Creating 2 styled variations (${scenario})...`);
-    const scenarioPrompt = this.buildEnhancementPrompt(scenario);
-
-    for (let i = 0; i < 2; i++) {
-      try {
-        // Use edit to maintain product fidelity while changing background/styling
-        const editedImage = await this.editImage(originalImageUrl, scenarioPrompt);
-        imageUrls.push(editedImage);
-        console.log(`[OpenAI Images] Styled variation ${i + 1}/2 created (${i + 2}/3 total)`);
-
-        // Delay between requests to avoid rate limits
-        if (i < 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      } catch (error) {
-        console.error(`[OpenAI Images] Error creating styled variation ${i + 1}:`, error);
-        // Try creating a simple variation as fallback
-        try {
-          const variations = await this.createVariations(originalImageUrl, 1);
-          if (variations.length > 0) {
-            imageUrls.push(variations[0]);
-            console.log(`[OpenAI Images] Styled variation ${i + 1}/2 created via variation (${i + 2}/3 total)`);
-          }
-        } catch (varError) {
-          console.error(`[OpenAI Images] Variation fallback also failed:`, varError);
-          // Continue with available images
-        }
+        throw error; // Re-throw original error
       }
     }
 
@@ -272,15 +258,22 @@ class OpenAIImageService {
    * Build enhancement prompt for image editing (faithful to original)
    */
   private buildEnhancementPrompt(scenario: string): string {
-    // Prompts focused on enhancing background/lighting while keeping product EXACTLY as is
+    // Prompts designed to preserve the product EXACTLY as is
+    // Only modify background and lighting
     const scenarioPrompts: Record<string, string> = {
-      'catalog': 'Replace the background with a pure white background for catalog photography. Keep the product EXACTLY as it is - do not change the product itself, only improve lighting and make background perfectly white and clean.',
-      'table': 'Place this product on a beautiful wooden table or desk. Keep the product EXACTLY as it is - only change the background to an elegant wooden surface with natural wood texture and professional lighting.',
-      'nature': 'Place this product in a natural outdoor setting with plants and greenery. Keep the product EXACTLY as it is - only change the background to a botanical environment with natural daylight.',
-      'minimal': 'Place this product in a minimalist setting with clean geometric shapes and neutral colors. Keep the product EXACTLY as it is - only change the background to a modern minimalist backdrop.',
-      'lifestyle': 'Place this product in a lifestyle/home environment. Keep the product EXACTLY as it is - only change the background to a natural home setting with soft natural lighting.',
-      'studio': 'Place this product in a professional studio setup with dramatic lighting. Keep the product EXACTLY as it is - only enhance the background and lighting to create a high-end studio atmosphere.',
-      'random': 'Place this product in a creative and artistic setting. Keep the product EXACTLY as it is - only change the background to something unique and aesthetically pleasing.',
+      'catalog': 'Professional product photography with pure solid white background (#FFFFFF). The product must remain completely unchanged - same colors, same shape, same details, same proportions. Only replace the background with clean white and add professional studio lighting. No modifications to the product itself.',
+      
+      'table': 'The exact same product photographed on an elegant wooden table or surface. Product must be 100% identical - same size, same colors, same design, same details. Only add a beautiful wooden table/surface underneath and improve lighting. The product itself cannot change at all.',
+      
+      'nature': 'The exact same product in a natural botanical setting with plants and greenery in the background. Product must remain perfectly identical - same appearance, same proportions, same colors. Only add natural elements like plants, leaves, or flowers in the background. Professional natural daylight. The product is untouched.',
+      
+      'minimal': 'The exact same product in a minimalist modern setting with clean geometric shapes and neutral tones. Product must be completely unchanged - same design, same colors, same features. Only add minimalist geometric elements or clean neutral background. The product remains exactly as it is.',
+      
+      'lifestyle': 'The exact same product in a lifestyle home environment. Product must be 100% identical - same look, same details, same colors. Only add lifestyle elements like furniture, fabrics, or home decor in the background. Natural home lighting. Product is completely preserved.',
+      
+      'studio': 'The exact same product with professional studio photography setup and dramatic lighting. Product must remain entirely unchanged - same shape, same colors, same design. Only enhance lighting and add studio backdrop/elements. The product itself is untouched.',
+      
+      'random': 'The exact same product in a creative and aesthetically pleasing setting. Product must be perfectly identical - same appearance, same proportions, same colors. Only add artistic background elements and professional lighting. The product cannot change.',
     };
 
     return scenarioPrompts[scenario] || scenarioPrompts['catalog'];

@@ -10,13 +10,13 @@ import {
 import { storageService } from '../services/storage.service';
 import { mongoService } from '../services/mongodb.service';
 import { queueManager } from '../core/queue-manager';
-import { openAIImageService } from '../services/openai-image.service';
+import { geminiImageService } from '../services/gemini-image.service';
 
 dotenv.config({ path: join(__dirname, '../../.env') });
 
 /**
  * Image Enhancement Worker
- * Processes enhanced-images generation using OpenAI DALL-E 3
+ * Processes enhanced-images generation using Google Gemini Imagen
  */
 export class ImageEnhancementWorker extends BaseWorker {
   queueName = 'images-queue';
@@ -39,18 +39,17 @@ export class ImageEnhancementWorker extends BaseWorker {
         throw new Error('Original image is required for enhancement');
       }
 
-      // Check if OpenAI is configured
-      if (!openAIImageService.isConfigured()) {
-        console.warn('[ImageEnhancementWorker] OpenAI not configured, using mock implementation');
+      // Check if Gemini is configured
+      if (!geminiImageService.isConfigured()) {
+        console.warn('[ImageEnhancementWorker] Gemini not configured, using mock implementation');
         return await this.processMock(jobId, itemIndex, enhancedConfig);
       }
 
       await this.updateProgress(jobId, itemIndex, 10);
 
       // Generate enhanced variations from original image
-      // Always generates 3 images: 1 catalog + 2 styled variations
+      // Always generates 3 high-quality variations
       const scenario = enhancedConfig.scenario || 'table';
-      const orientation = enhancedConfig.orientation || 'portrait';
 
       // Build full URL for original image
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
@@ -58,23 +57,21 @@ export class ImageEnhancementWorker extends BaseWorker {
         ? originalImage.url 
         : `${baseUrl}${originalImage.url}`;
 
-      console.log(`[ImageEnhancementWorker] Creating 3 enhanced variations (1 catalog + 2 ${scenario})`);
+      console.log(`[ImageEnhancementWorker] Creating 3 enhanced variations with scenario: ${scenario}`);
       console.log(`[ImageEnhancementWorker] From original image: ${originalImageUrl}`);
-      console.log(`[ImageEnhancementWorker] Orientation: ${orientation}`);
       
       await this.updateProgress(jobId, itemIndex, 20);
       
-      const imageUrls = await openAIImageService.generateEnhancedImages(
+      const imageUrls = await geminiImageService.generateEnhancedImages(
         productInfo.name,
         productInfo.description || '',
         scenario,
-        originalImageUrl,
-        orientation
+        originalImageUrl
       );
 
-      // Download and save images
+      // Images are already saved by geminiImageService
       await this.updateProgress(jobId, itemIndex, 60);
-      const savedImages = await this.downloadAndSaveImages(imageUrls);
+      const savedImages = imageUrls; // Gemini service returns saved paths directly
 
       await this.updateProgress(jobId, itemIndex, 100);
 
@@ -100,37 +97,7 @@ export class ImageEnhancementWorker extends BaseWorker {
     }
   }
 
-  /**
-   * Download images from URLs and save to storage
-   */
-  private async downloadAndSaveImages(imageUrls: string[]): Promise<string[]> {
-    const savedPaths: string[] = [];
 
-    for (let i = 0; i < imageUrls.length; i++) {
-      try {
-        console.log(`[ImageEnhancementWorker] Downloading image ${i + 1}/${imageUrls.length}`);
-        
-        // Download image from OpenAI URL
-        const imageBuffer = await openAIImageService.downloadImage(imageUrls[i]);
-        
-        // Save to storage
-        const filename = storageService.generateFilename('png');
-        const relativePath = `enhanced/${filename}`;
-        await storageService.writeFile(relativePath, imageBuffer);
-        
-        const savedPath = `/uploads/${relativePath}`;
-        savedPaths.push(savedPath);
-        
-        console.log(`[ImageEnhancementWorker] Saved image ${i + 1}: ${savedPath}`);
-      } catch (error) {
-        console.error(`[ImageEnhancementWorker] Error downloading image ${i + 1}:`, error);
-        // Continue with other images even if one fails
-      }
-    }
-
-    console.log(`[ImageEnhancementWorker] Successfully saved ${savedPaths.length}/${imageUrls.length} images`);
-    return savedPaths;
-  }
 
   /**
    * Mock implementation when OpenAI is not configured

@@ -299,20 +299,20 @@ export default function JobPage() {
                       {item.status === 'completed' && item.result && (
                         <div className="mt-3 border-t border-border pt-3">
                           {item.result.images && item.result.images.length > 0 && (
-                            <div className="space-y-2">
+                            <div className="space-y-3">
                               <p className="text-sm font-medium text-text-secondary">
                                 Imagens geradas: {item.result.count || item.result.images.length}
                               </p>
-                              <div className="grid grid-cols-2 gap-3">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {item.result.images.map((imageUrl, i) => (
                                   <div
                                     key={i}
-                                    className="group relative overflow-hidden rounded-lg border border-border bg-background-secondary"
+                                    className="group relative overflow-hidden rounded-lg border border-border bg-background-secondary aspect-square"
                                   >
                                     <img
                                       src={imageUrl}
                                       alt={`Enhanced ${i + 1}`}
-                                      className="h-40 w-full object-cover transition-transform group-hover:scale-105"
+                                      className="h-full w-full object-contain transition-transform group-hover:scale-105"
                                     />
                                     <a
                                       href={imageUrl}
