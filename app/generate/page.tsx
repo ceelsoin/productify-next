@@ -4,6 +4,7 @@ import { useSession } from 'next-auth/react';
 import { useState } from 'react';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
+import { analyzeProductImage, generateVSTNarratives } from '@/lib/image-analysis';
 import {
   Upload,
   Image as ImageIcon,
@@ -17,6 +18,8 @@ import {
   Info,
   Lightbulb,
   Settings,
+  Loader2,
+  Wand2,
 } from 'lucide-react';
 
 // Types for generation options
@@ -90,6 +93,15 @@ export default function GeneratePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [isDragging, setIsDragging] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [vstNarratives, setVstNarratives] = useState<{
+    hookViral: string;
+    reviewSincero: string;
+    lifestyleSolution: string;
+    premiumQuality: string;
+  } | null>(null);
+  const [selectedVstStyle, setSelectedVstStyle] = useState<'hookViral' | 'reviewSincero' | 'lifestyleSolution' | 'premiumQuality'>('hookViral');
+  const [vstNarrativeText, setVstNarrativeText] = useState('');
   
   // Product information
   const [productInfo, setProductInfo] = useState({
@@ -246,13 +258,43 @@ export default function GeneratePage() {
     }
   };
 
-  const processFile = (file: File) => {
+  const processFile = async (file: File) => {
     setSelectedFile(file);
     const reader = new FileReader();
     reader.onloadend = () => {
       setPreviewUrl(reader.result as string);
     };
     reader.readAsDataURL(file);
+
+    // Analisar imagem automaticamente com IA
+    setIsAnalyzing(true);
+    try {
+      const analysis = await analyzeProductImage(file);
+      
+      // Preencher informações do produto automaticamente
+      setProductInfo(prev => ({
+        ...prev,
+        name: analysis.seoTitle,
+        description: analysis.briefDescription,
+      }));
+
+      // Gerar narrativas VST automaticamente
+      const narratives = await generateVSTNarratives(
+        analysis.productName,
+        analysis.briefDescription,
+        analysis.category
+      );
+      setVstNarratives(narratives);
+      
+      // Definir a primeira narrativa como padrão
+      setVstNarrativeText(narratives.hookViral);
+      
+    } catch (error) {
+      console.error('Erro ao analisar imagem:', error);
+      // Continuar mesmo se a análise falhar
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
@@ -333,10 +375,11 @@ export default function GeneratePage() {
   const playVoicePreview = () => {
     setIsPlayingVoicePreview(true);
     
-    // Simular preview de voz com Web Speech API (ou você pode usar Google TTS API)
-    const utterance = new SpeechSynthesisUtterance(
-      'Olá! Este é um exemplo de como ficará a narração do seu produto com as configurações selecionadas.'
-    );
+    // Usar o texto da narrativa VST se disponível, senão usar texto padrão
+    const previewText = vstNarrativeText || 
+      'Olá! Este é um exemplo de como ficará a narração do seu produto com as configurações selecionadas.';
+    
+    const utterance = new SpeechSynthesisUtterance(previewText);
     
     // Configurar voz baseado na seleção
     const voices = window.speechSynthesis.getVoices();
@@ -413,7 +456,11 @@ export default function GeneratePage() {
         } else if (type === 'product-description') {
           itemConfig = config.productDescription || {};
         } else if (type === 'voice-over') {
-          itemConfig = config.voiceOver || {};
+          itemConfig = {
+            ...config.voiceOver || {},
+            vstStyle: selectedVstStyle,
+            narrativeText: vstNarrativeText, // Incluir texto customizado da narrativa
+          };
         }
         
         return {
@@ -561,21 +608,39 @@ export default function GeneratePage() {
                     />
                   </div>
                 ) : (
-                  <div className="relative">
-                    <img
-                      src={previewUrl}
-                      alt="Preview"
-                      className="h-auto w-full rounded-xl border border-border"
-                    />
-                    <button
-                      onClick={() => {
-                        setPreviewUrl(null);
-                        setSelectedFile(null);
-                      }}
-                      className="absolute right-3 top-3 rounded-lg bg-background/90 px-4 py-2 text-sm font-medium text-text-primary backdrop-blur-sm transition-colors hover:bg-background"
-                    >
-                      Trocar foto
-                    </button>
+                  <div className="space-y-3">
+                    <div className="relative">
+                      <img
+                        src={previewUrl}
+                        alt="Preview"
+                        className="h-auto w-full rounded-xl border border-border"
+                      />
+                      <button
+                        onClick={() => {
+                          setPreviewUrl(null);
+                          setSelectedFile(null);
+                          setProductInfo({ name: '', description: '', height: '', width: '', depth: '', weight: '' });
+                          setVstNarratives(null);
+                          setVstNarrativeText('');
+                        }}
+                        className="absolute right-3 top-3 rounded-lg bg-background/90 px-4 py-2 text-sm font-medium text-text-primary backdrop-blur-sm transition-colors hover:bg-background"
+                      >
+                        Trocar foto
+                      </button>
+                    </div>
+                    
+                    {/* AI Analysis Indicator */}
+                    {isAnalyzing && (
+                      <div className="flex items-center gap-3 rounded-lg border border-primary-500/30 bg-primary-500/10 px-4 py-3">
+                        <Loader2 className="h-5 w-5 animate-spin text-primary-400" />
+                        <div>
+                          <p className="font-medium text-primary-400">Analisando produto com IA...</p>
+                          <p className="text-xs text-primary-400/70">
+                            Identificando produto e gerando conteúdo otimizado
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1328,6 +1393,148 @@ export default function GeneratePage() {
                                     <span>Rápido</span>
                                   </div>
                                 </div>
+
+                                {/* VST Style Selection */}
+                                <div>
+                                  <label className="mb-2 block text-sm text-text-secondary">
+                                    Estilo de Narrativa (VST)
+                                  </label>
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedVstStyle('hookViral');
+                                        if (vstNarratives) {
+                                          setVstNarrativeText(vstNarratives.hookViral);
+                                        }
+                                      }}
+                                      className={`rounded-lg border p-3 text-left transition-all ${
+                                        selectedVstStyle === 'hookViral'
+                                          ? 'border-primary-500 bg-primary-500/10 text-primary-400'
+                                          : 'border-border bg-background text-text-secondary hover:border-primary-500/50'
+                                      }`}
+                                    >
+                                      <div className="mb-1 font-semibold">🔥 Hook Viral</div>
+                                      <div className="text-xs opacity-80">
+                                        Energético, cria FOMO
+                                      </div>
+                                    </button>
+                                    
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedVstStyle('reviewSincero');
+                                        if (vstNarratives) {
+                                          setVstNarrativeText(vstNarratives.reviewSincero);
+                                        }
+                                      }}
+                                      className={`rounded-lg border p-3 text-left transition-all ${
+                                        selectedVstStyle === 'reviewSincero'
+                                          ? 'border-primary-500 bg-primary-500/10 text-primary-400'
+                                          : 'border-border bg-background text-text-secondary hover:border-primary-500/50'
+                                      }`}
+                                    >
+                                      <div className="mb-1 font-semibold">💬 Review Sincero</div>
+                                      <div className="text-xs opacity-80">
+                                        Pessoal, honesto
+                                      </div>
+                                    </button>
+                                    
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedVstStyle('lifestyleSolution');
+                                        if (vstNarratives) {
+                                          setVstNarrativeText(vstNarratives.lifestyleSolution);
+                                        }
+                                      }}
+                                      className={`rounded-lg border p-3 text-left transition-all ${
+                                        selectedVstStyle === 'lifestyleSolution'
+                                          ? 'border-primary-500 bg-primary-500/10 text-primary-400'
+                                          : 'border-border bg-background text-text-secondary hover:border-primary-500/50'
+                                      }`}
+                                    >
+                                      <div className="mb-1 font-semibold">🏡 Lifestyle Solution</div>
+                                      <div className="text-xs opacity-80">
+                                        Aspiracional, prático
+                                      </div>
+                                    </button>
+                                    
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedVstStyle('premiumQuality');
+                                        if (vstNarratives) {
+                                          setVstNarrativeText(vstNarratives.premiumQuality);
+                                        }
+                                      }}
+                                      className={`rounded-lg border p-3 text-left transition-all ${
+                                        selectedVstStyle === 'premiumQuality'
+                                          ? 'border-primary-500 bg-primary-500/10 text-primary-400'
+                                          : 'border-border bg-background text-text-secondary hover:border-primary-500/50'
+                                      }`}
+                                    >
+                                      <div className="mb-1 font-semibold">✨ Premium Quality</div>
+                                      <div className="text-xs opacity-80">
+                                        Sofisticado, exclusivo
+                                      </div>
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* VST Narrative Text - Editable */}
+                                {vstNarrativeText && (
+                                  <div>
+                                    <label className="mb-2 flex items-center justify-between text-sm text-text-secondary">
+                                      <span>Texto da Narrativa</span>
+                                      {isAnalyzing && (
+                                        <span className="flex items-center gap-1 text-primary-400">
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                          Gerando...
+                                        </span>
+                                      )}
+                                    </label>
+                                    <div className="relative">
+                                      <textarea
+                                        rows={5}
+                                        value={vstNarrativeText}
+                                        onChange={e => setVstNarrativeText(e.target.value)}
+                                        placeholder="O texto da narrativa será gerado automaticamente com base no estilo selecionado..."
+                                        className="w-full rounded-lg border border-border bg-background px-4 py-3 text-text-primary placeholder-text-muted focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          if (!productInfo.name || !productInfo.description) {
+                                            return;
+                                          }
+                                          setIsAnalyzing(true);
+                                          try {
+                                            const narratives = await generateVSTNarratives(
+                                              productInfo.name,
+                                              productInfo.description,
+                                              'product' // categoria padrão
+                                            );
+                                            setVstNarratives(narratives);
+                                            setVstNarrativeText(narratives[selectedVstStyle]);
+                                          } catch (error) {
+                                            console.error('Erro ao gerar narrativas:', error);
+                                          } finally {
+                                            setIsAnalyzing(false);
+                                          }
+                                        }}
+                                        disabled={isAnalyzing || !productInfo.name || !productInfo.description}
+                                        className="absolute right-3 top-3 rounded-lg bg-primary-500/10 p-2 text-primary-400 transition-all hover:bg-primary-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        title="Regerar narrativa"
+                                      >
+                                        <Wand2 className="h-4 w-4" />
+                                      </button>
+                                    </div>
+                                    <p className="mt-1 text-xs text-text-tertiary">
+                                      Você pode editar o texto acima para personalizar a narrativa do seu vídeo
+                                    </p>
+                                  </div>
+                                )}
 
                                 {/* Voice Preview Button */}
                                 <div className="pt-2">

@@ -12,6 +12,7 @@
   "dependencies": {
     "@auth/mongodb-adapter": "^3.11.1",
     "@google-cloud/text-to-speech": "^5.0.0",
+    "@google/generative-ai": "^0.24.1",
     "@remotion/cli": "^4.0.0",
     "@remotion/player": "^4.0.0",
     "bcryptjs": "^3.0.3",
