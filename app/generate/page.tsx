@@ -269,7 +269,9 @@ export default function GeneratePage() {
     // Analisar imagem automaticamente com IA
     setIsAnalyzing(true);
     try {
+      console.log('[Análise] Iniciando análise da imagem...');
       const analysis = await analyzeProductImage(file);
+      console.log('[Análise] Resultado:', analysis);
       
       // Preencher informações do produto automaticamente
       setProductInfo(prev => ({
@@ -278,19 +280,23 @@ export default function GeneratePage() {
         description: analysis.briefDescription,
       }));
 
+      console.log('[VST] Gerando narrativas...');
       // Gerar narrativas VST automaticamente
       const narratives = await generateVSTNarratives(
         analysis.productName,
         analysis.briefDescription,
         analysis.category
       );
+      console.log('[VST] Narrativas geradas:', narratives);
       setVstNarratives(narratives);
       
       // Definir a primeira narrativa como padrão
       setVstNarrativeText(narratives.hookViral);
       
+      console.log('[Análise] Concluída com sucesso!');
     } catch (error) {
-      console.error('Erro ao analisar imagem:', error);
+      console.error('[Análise] Erro completo:', error);
+      alert(`Erro ao analisar imagem: ${error instanceof Error ? error.message : 'Erro desconhecido'}. Verifique o console para mais detalhes.`);
       // Continuar mesmo se a análise falhar
     } finally {
       setIsAnalyzing(false);
