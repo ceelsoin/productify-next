@@ -39,7 +39,8 @@ class GeminiImageService {
 
   /**
    * Generate enhanced product images based on original image
-   * Creates 3 high-quality variations maintaining product fidelity
+   * Creates 4 high-quality variations: 1 catalog (white bg) + 3 scenario-specific
+   * Maintains product fidelity while changing backgrounds
    */
   async generateEnhancedImages(
     productName: string,
@@ -51,7 +52,7 @@ class GeminiImageService {
       throw new Error('Gemini client not configured. Please set GOOGLE_API_KEY or GEMINI_API_KEY.');
     }
 
-    console.log(`[Gemini Images] Generating 3 enhanced variations`);
+    console.log(`[Gemini Images] Generating 4 enhanced variations (1 catalog + 3 ${scenario})`);
     console.log(`[Gemini Images] Product: ${productName}`);
     console.log(`[Gemini Images] Original image: ${originalImageUrl}`);
     console.log(`[Gemini Images] Scenario: ${scenario}`);
@@ -64,13 +65,14 @@ class GeminiImageService {
       const base64Image = imageBuffer.toString('base64');
       const mimeType = await this.detectMimeType(imageBuffer);
 
-      // Generate 3 variations with different prompts using original image as reference
+      // Generate 4 variations: 1 catalog + 3 scenario-specific
       const prompts = this.buildVariationPrompts(productName, productDescription, scenario);
 
       for (let i = 0; i < prompts.length; i++) {
         try {
-          console.log(`[Gemini Images] Generating variation ${i + 1}/3...`);
-          console.log(`[Gemini Images] Prompt: ${prompts[i].substring(0, 100)}...`);
+          const imageType = i === 0 ? 'CATALOG' : `${scenario.toUpperCase()} ${i}`;
+          console.log(`[Gemini Images] Generating ${imageType} (${i + 1}/4)...`);
+          console.log(`[Gemini Images] Prompt: ${prompts[i].substring(0, 150)}...`);
           
           // Generate image using original as reference
           const result = await this.model.generateContent([
@@ -91,19 +93,20 @@ class GeminiImageService {
             const imagePart = parts.find(part => 'inlineData' in part && part.inlineData);
             
             if (imagePart && 'inlineData' in imagePart && imagePart.inlineData) {
-              // Save the generated image
+              // Save the generated image with appropriate prefix
+              const prefix = i === 0 ? 'catalog' : `${scenario}-${i}`;
               const savedUrl = await this.saveGeneratedImage(
                 Buffer.from(imagePart.inlineData.data, 'base64'),
-                `variation-${i + 1}`
+                prefix
               );
               imageUrls.push(savedUrl);
-              console.log(`[Gemini Images] Variation ${i + 1}/3 created successfully: ${savedUrl}`);
+              console.log(`[Gemini Images] ${imageType} created successfully: ${savedUrl}`);
             } else {
-              console.error(`[Gemini Images] No image data in response for variation ${i + 1}`);
+              console.error(`[Gemini Images] No image data in response for ${imageType}`);
               console.error(`[Gemini Images] Response parts:`, JSON.stringify(parts, null, 2));
             }
           } else {
-            console.error(`[Gemini Images] No parts in response for variation ${i + 1}`);
+            console.error(`[Gemini Images] No parts in response for ${imageType}`);
           }
 
           // Delay between requests to avoid rate limits
@@ -111,7 +114,7 @@ class GeminiImageService {
             await new Promise(resolve => setTimeout(resolve, 2000));
           }
         } catch (error) {
-          console.error(`[Gemini Images] Error generating variation ${i + 1}:`, error);
+          console.error(`[Gemini Images] Error generating image ${i + 1}:`, error);
           // Continue with other variations
         }
       }
@@ -120,7 +123,7 @@ class GeminiImageService {
         throw new Error('Failed to generate any images');
       }
 
-      console.log(`[Gemini Images] Successfully generated ${imageUrls.length}/3 images`);
+      console.log(`[Gemini Images] Successfully generated ${imageUrls.length}/4 images`);
       return imageUrls;
 
     } catch (error) {
@@ -130,7 +133,7 @@ class GeminiImageService {
   }
 
   /**
-   * Build variation prompts for different scenarios
+   * Build variation prompts: 1 catalog (white bg) + 3 scenario-specific
    * Prompts emphasize keeping the product IDENTICAL while changing background/lighting
    */
   private buildVariationPrompts(
@@ -138,48 +141,387 @@ class GeminiImageService {
     productDescription: string,
     scenario: string
   ): string[] {
-    const scenarioInstructions: Record<string, string[]> = {
+    const baseContext = `Product: ${productName}${productDescription ? `\nDescription: ${productDescription}` : ''}`;
+    
+    // FIRST PROMPT: Always catalog style with white background
+    const catalogPrompt = `${baseContext}
+
+CRITICAL INSTRUCTION: Keep the product 100% IDENTICAL - same shape, colors, textures, proportions, and all details. DO NOT modify the product in any way.
+
+CATALOG IMAGE REQUIREMENTS:
+- Background: Pure solid opaque white (#FFFFFF or rgb(255,255,255)) - NO gradients, textures, or shadows on background
+- Product: Perfectly centered in frame
+- Lighting: Professional 3-point studio lighting - soft, diffused, even illumination from multiple angles
+- Shadow: Minimal subtle shadow directly under product (10-15% gray opacity) for depth
+- Quality: Crystal clear focus, sharp details, high resolution
+- Style: E-commerce catalog photography (like Amazon, Apple product pages)
+- Exposure: Bright but not overexposed, showing true product colors
+- NO props, decorations, or background elements - just product on white
+
+The product itself must remain COMPLETELY UNCHANGED.`;
+
+    // SCENARIO-SPECIFIC PROMPTS (3 variations)
+    const scenarioPrompts: Record<string, string[]> = {
       'catalog': [
-        `Keep this exact product 100% identical - same shape, colors, size, design, and all details. Only change the background to pure solid white (#FFFFFF) and add professional studio lighting for e-commerce catalog. The product itself CANNOT change at all. High quality commercial photography.`,
-        `Maintain this product perfectly as shown - exactly the same appearance, proportions, and colors. Only replace the background with clean white backdrop and enhance with soft professional lighting for catalog. Product must remain completely unchanged. Premium quality shot.`,
-        `Preserve this product exactly as it is - identical design, colors, and features. Only modify the background to pristine white and add studio lighting for commercial catalog photography. The product is untouched. Crystal clear professional quality.`,
+        `${baseContext}
+
+CRITICAL: Keep product 100% identical. Only change background and lighting.
+
+PREMIUM CATALOG VARIATION:
+- Background: Pure white with subtle gradient shadow (5% gray)
+- Angle: Slightly elevated view (15-20 degrees) showing product dimensionality
+- Lighting: Soft box lighting wrapping evenly around product
+- Focus: Razor sharp on all surfaces and details
+- Quality: Luxury product photography standard
+- True-to-life color accuracy
+
+Product unchanged.`,
+
+        `${baseContext}
+
+CRITICAL: Keep product 100% identical. Only change background and lighting.
+
+CLEAN CATALOG VARIATION:
+- Background: Pristine solid white backdrop
+- Lighting: Butterfly lighting creating elegant shadow beneath
+- Clarity: Perfect focus showing every product feature
+- Exposure: Bright high-key lighting with no hot spots
+- Style: Print catalog ready, professional commercial quality
+
+Product unchanged.`,
+
+        `${baseContext}
+
+CRITICAL: Keep product 100% identical. Only change background and lighting.
+
+MINIMAL CATALOG VARIATION:
+- Background: Pure white with barely visible reflection
+- Lighting: Overhead diffused light with side fill
+- Shadow: Soft realistic shadow for grounding
+- Details: All product features clearly visible
+- Quality: Magazine-quality product shot
+
+Product unchanged.`,
       ],
       'table': [
-        `Keep this exact product 100% identical. Only place it on a beautiful wooden table with natural wood grain texture. Add elegant wooden surface underneath while maintaining the product exactly as shown. Professional lighting. Product unchanged.`,
-        `Maintain this product perfectly as it is. Only photograph it on a modern wooden desk with rich wood texture. The product stays completely identical - only the background changes to wooden surface. Natural lighting. Product untouched.`,
-        `Preserve this product exactly as shown. Only add a premium wooden table surface underneath. Product must remain entirely the same - only enhance with beautiful wooden backdrop. Warm lighting. Product unchanged.`,
+        `${baseContext}
+
+CRITICAL: Keep product 100% identical. Only change surface and environment.
+
+NATURAL WOOD TABLE:
+- Surface: Beautiful oak or walnut table with visible natural grain
+- Texture: Rich wood with semi-matte finish
+- Lighting: Soft natural window light from side (golden hour, 4000-5000K)
+- Shadow: Gentle natural shadows following light direction
+- Background: Softly blurred room or café setting (bokeh effect)
+- Elements: Maybe hint of plant or cup edge in soft focus (never covering product)
+- Atmosphere: Warm, inviting, cozy
+- Reflection: Subtle ambient occlusion where product meets wood
+
+Product unchanged.`,
+
+        `${baseContext}
+
+CRITICAL: Keep product 100% identical. Only change surface and environment.
+
+RUSTIC WORKSPACE:
+- Surface: Reclaimed or distressed wooden desk with character
+- Wood type: Lighter tones (pine, birch) with visible wear and patina
+- Lighting: Bright natural daylight creating clean shadows
+- Background: Defocused home office or workshop (whites, creams)
+- Detail: Maybe fabric texture edge (linen) barely visible
+- Mood: Creative, artisan, authentic workspace
+- Quality: Professional lifestyle photography
+
+Product unchanged.`,
+
+        `${baseContext}
+
+CRITICAL: Keep product 100% identical. Only change surface and environment.
+
+ELEGANT TABLE SETTING:
+- Surface: Polished dark mahogany or cherry wood with slight sheen
+- Finish: Semi-gloss premium furniture grade
+- Lighting: Balanced natural and interior lighting
+- Background: Upscale dining room or modern kitchen (bokeh)
+- Palette: Rich browns, warm ambers, neutral tones
+- Optional: Soft fabric (placemat) edge in neutral color
+- Feel: Sophisticated, refined, premium
+- Detail: Subtle reflections on polished surface
+
+Product unchanged.`,
       ],
       'nature': [
-        `Keep this exact product 100% identical. Only place it in a natural botanical setting with plants and greenery in the background. Product remains perfectly the same - only add natural elements like leaves, plants, or flowers. Soft natural daylight. Product untouched.`,
-        `Maintain this product exactly as it is. Only photograph it in an outdoor natural environment with botanical elements. The product stays completely identical - only the background changes to nature. Natural organic lighting. Product unchanged.`,
-        `Preserve this product perfectly as shown. Only add natural botanical backdrop with plants and leaves. Product must remain entirely the same - only enhance with natural elements. Beautiful natural light. Product untouched.`,
+        `${baseContext}
+
+CRITICAL: Keep product 100% identical. Only change environment.
+
+BOTANICAL GARDEN:
+- Plants: Lush monstera leaves, ferns, or palm fronds around product
+- Additional: Eucalyptus sprigs, ivy, or tropical flowers (NOT covering product)
+- Background: Heavily blurred green foliage with bokeh
+- Lighting: Filtered natural sunlight through leaves (dappled, soft)
+- Colors: Rich emerald, forest green, sage with light spots
+- Atmosphere: Fresh, organic, eco-friendly
+- Composition: Product clear focal point, plants frame naturally
+- Depth: Strong foreground/background blur
+
+Product unchanged.`,
+
+        `${baseContext}
+
+CRITICAL: Keep product 100% identical. Only change environment.
+
+GARDEN OASIS:
+- Greenery: Mix of moss, fern leaves, soft succulent forms
+- Flowers: Small white or pastel blooms as minimal accent
+- Elements: Small stones, bark, or natural fiber nearby
+- Background: Dreamy out-of-focus garden with green gradient
+- Lighting: Soft morning or afternoon sun (golden, gentle shadows)
+- Palette: Lime to deep forest greens
+- Feel: Peaceful, natural, sustainable
+- Balance: Asymmetrical with nature framing product
+
+Product unchanged.`,
+
+        `${baseContext}
+
+CRITICAL: Keep product 100% identical. Only change environment.
+
+WILD NATURE:
+- Base: Natural moss bed or forest floor aesthetic
+- Plants: Wild grasses, clover, small wildflowers, woodland ferns
+- Texture: Bark, lichen, or river stones for depth
+- Background: Soft-focus landscape (trees, meadow, water)
+- Lighting: Natural outdoor light diffused by clouds
+- Atmosphere: Raw, authentic, eco-conscious
+- Colors: Earth tones with vibrant green accents
+- Mood: Grounded, adventurous
+
+Product unchanged.`,
       ],
       'minimal': [
-        `Keep this exact product 100% identical. Only place it in a minimalist modern setting with clean geometric shapes. Product remains perfectly the same - only add minimalist backdrop with geometric elements or neutral tones. Modern clean aesthetic. Product untouched.`,
-        `Maintain this product exactly as it is. Only photograph it with minimalist design background. The product stays completely identical - only add simple geometric shapes or neutral colors. Contemporary minimalist style. Product unchanged.`,
-        `Preserve this product perfectly as shown. Only add minimalist elements and clean lines to background. Product must remain entirely the same - only enhance with neutral minimalist backdrop. Modern simplicity. Product untouched.`,
+        `${baseContext}
+
+CRITICAL: Keep product 100% identical. Only change background.
+
+GEOMETRIC MINIMALISM:
+- Shapes: Simple arches, circles, rectangular blocks (2-3 geometric forms)
+- Materials: Matte plaster, smooth concrete, or painted surfaces
+- Colors: Neutral palette - off-white, beige, warm gray, soft taupe
+- Background: Subtle gradient from light to slightly darker neutral
+- Lighting: Soft directional light creating clean geometric shadows
+- Shadows: Sharp-edged from geometric objects for visual interest
+- Space: Balanced negative space, rule of thirds
+- Style: Scandinavian, contemporary art gallery aesthetic
+
+Product unchanged.`,
+
+        `${baseContext}
+
+CRITICAL: Keep product 100% identical. Only change background.
+
+ABSTRACT MINIMALISM:
+- Elements: Overlapping circles, curved forms, layered rectangles
+- Texture: Ultra-smooth matte surfaces
+- Palette: Monochromatic or analogous (cream+beige+soft pink OR grayscale)
+- Background: Soft gradient or solid with slight texture
+- Lighting: Diffused creating barely-there shadows
+- Interest: Light/shadow play through shapes for depth
+- Composition: Asymmetric balance, product slightly off-center
+- Reference: Kinfolk magazine, Cereal aesthetic
+
+Product unchanged.`,
+
+        `${baseContext}
+
+CRITICAL: Keep product 100% identical. Only change background.
+
+CONTEMPORARY MINIMALISM:
+- Structure: Simple platforms, steps, or pedestals in geometric forms
+- Material: Smooth plaster, painted wood, modern composite
+- Colors: Dove gray, warm white, sand, stone
+- Background: Two-tone separation or gentle gradient
+- Lighting: Natural window light quality - soft directional
+- Shadows: Clean, defined shadows enhancing geometry
+- Detail: One curved element contrasting angular shapes
+- Style: Modern architecture, Japanese minimalism
+
+Product unchanged.`,
       ],
       'lifestyle': [
-        `Keep this exact product 100% identical. Only place it in a natural lifestyle home setting. Product remains perfectly the same - only add lifestyle elements like home decor, fabrics, or furniture in background. Warm natural lighting. Product untouched.`,
-        `Maintain this product exactly as it is. Only photograph it in a cozy home environment. The product stays completely identical - only add lifestyle context with home accessories. Soft ambient lighting. Product unchanged.`,
-        `Preserve this product perfectly as shown. Only add home elements and natural environment to background. Product must remain entirely the same - only enhance with lifestyle setting. Inviting atmosphere. Product untouched.`,
+        `${baseContext}
+
+CRITICAL: Keep product 100% identical. Only change setting.
+
+COZY HOME LIVING:
+- Setting: Modern living room or bedroom with natural placement
+- Surface: Coffee table, nightstand, or kitchen counter (wood/marble/painted)
+- Background: Soft-focus sofa, cushions, throw blanket, or bedding
+- Decor: Barely visible ceramic vase, candle, plant, or books
+- Lighting: Warm natural window light (late afternoon, 3000-4000K)
+- Textiles: Hint of linen, cotton, knit in neutrals
+- Palette: Warm whites, creams, soft grays, muted earth tones
+- Feel: Inviting, comfortable, hygge aesthetic
+
+Product unchanged.`,
+
+        `${baseContext}
+
+CRITICAL: Keep product 100% identical. Only change setting.
+
+MORNING ROUTINE:
+- Location: Kitchen counter, bathroom vanity, or breakfast nook
+- Context: Natural use moment (morning light, coffee time)
+- Props: Defocused French press, ceramic mug, potted herb, or linen towel
+- Surface: Natural stone, marble, or light wood
+- Background: Soft bokeh modern home setting
+- Lighting: Fresh morning sunlight streaming through window
+- Colors: Clean whites, warm wood, greenery accents
+- Details: Maybe steam, water droplets, or natural condensation
+- Mood: Aspirational but authentic, slow living
+
+Product unchanged.`,
+
+        `${baseContext}
+
+CRITICAL: Keep product 100% identical. Only change setting.
+
+STYLISH LIVING SPACE:
+- Placement: Elegant side table, modern console, or designer shelf
+- Surroundings: High-end interior design in soft focus
+- Materials: Mix of smooth surfaces, soft textiles, natural elements
+- Background: Modern furniture, art edge, or architectural detail
+- Lighting: Balanced natural and ambient interior (gallery quality)
+- Accessories: Design books, sculptural object, or premium candle (defocused)
+- Palette: Sophisticated neutrals with accent (navy, olive, rust)
+- Textiles: Cashmere, velvet, or linen suggestions
+- Mood: Curated, design-conscious, elevated
+
+Product unchanged.`,
       ],
       'studio': [
-        `Keep this exact product 100% identical. Only add professional studio setup with dramatic lighting. Product remains perfectly the same - only enhance lighting and add studio backdrop elements. High-end professional atmosphere. Product untouched.`,
-        `Maintain this product exactly as it is. Only photograph it with studio photography lighting. The product stays completely identical - only add dramatic lighting effects and professional studio background. Premium quality. Product unchanged.`,
-        `Preserve this product perfectly as shown. Only add artistic studio lighting and professional backdrop. Product must remain entirely the same - only enhance with sophisticated studio setup. Product untouched.`,
+        `${baseContext}
+
+CRITICAL: Keep product 100% identical. Only change lighting and backdrop.
+
+DRAMATIC STUDIO:
+- Background: Deep gradient charcoal gray to black (cinematic)
+- Setup: Three-point lighting with emphasis on rim lights
+- Key light: Strong directional from 45 degrees (creates dimension)
+- Rim/edge lighting: Bright highlights on product edges (separation)
+- Fill: Subtle fill preventing pure black shadows
+- Effects: Optional light rays or subtle atmospheric haze
+- Reflections: Strategic highlights showing premium quality
+- Mood: Bold, luxury, high-end commercial
+- Style: Car photography, luxury watch ads
+
+Product unchanged.`,
+
+        `${baseContext}
+
+CRITICAL: Keep product 100% identical. Only change lighting and backdrop.
+
+COLORED GEL STUDIO:
+- Background: Gradient with jewel tones (sapphire blue, deep purple, burgundy)
+- Lighting: Professional gels creating color washes
+- Main: Neutral key light on product (true product colors)
+- Accents: Colored rim lights or background lights (blue, purple, amber, cyan)
+- Technique: Light painting or dual-color gradient effect
+- Shadows: Defined but not harsh, adding depth
+- Style: Music video, fashion editorial, Nike/Adidas campaigns
+- Mood: Bold, energetic, contemporary
+
+Product unchanged.`,
+
+        `${baseContext}
+
+CRITICAL: Keep product 100% identical. Only change lighting and backdrop.
+
+CINEMATIC STUDIO:
+- Background: Solid dark backdrop (matte black or deep gray) with texture
+- Lighting: Film-quality setup - strong key with negative fill
+- Technique: Spotlight with fall-off creating natural vignette
+- Atmosphere: Fine mist or dust particles in light beams
+- Highlights: Strategic specular reflections showing material quality
+- Shadows: Deep rich blacks with controlled detail
+- Tint: Slight cool or warm grade for mood (film LUT style)
+- Style: Christopher Nolan aesthetic, car commercials
+- Quality: Ultra-premium, blockbuster advertising
+
+Product unchanged.`,
       ],
       'random': [
-        `Keep this exact product 100% identical. Only place it in a creative and artistic setting. Product remains perfectly the same - only add unique and aesthetically pleasing background elements. Creative professional lighting. Product untouched.`,
-        `Maintain this product exactly as it is. Only photograph it in an artistic environment. The product stays completely identical - only enhance with creative backdrop and artistic elements. Unique aesthetic. Product unchanged.`,
-        `Preserve this product perfectly as shown. Only add artistic background and creative lighting. Product must remain entirely the same - only enhance with beautiful artistic composition. Product untouched.`,
+        `${baseContext}
+
+CRITICAL: Keep product 100% identical. Only change background creatively.
+
+CREATIVE UNEXPECTED - Choose ONE bold direction:
+Option A - Urban: Colorful graffiti wall or street art backdrop with vibrant colors
+Option B - Neon: Dark scene with neon light accents (pink, blue, cyan glow)
+Option C - Texture: Interesting material (brushed metal, raw concrete, cracked marble)
+Option D - Light Art: Bokeh lights, fiber optics, or light painting effects
+Option E - Reflection: Glossy surface mirror effect or water reflections
+Option F - Artistic: Watercolor wash, ink in water, or paint splatter background
+
+Execution:
+- Product: Perfectly sharp and true-to-life colors
+- Background: Experimental and bold
+- Lighting: Creative but ensures product clarity
+- Style: Instagram-worthy, scroll-stopping, shareable
+
+Product unchanged.`,
+
+        `${baseContext}
+
+CRITICAL: Keep product 100% identical. Only change background artistically.
+
+ARTISTIC COMPOSITION - Choose ONE artistic direction:
+Option A - Material Mix: Velvet + marble + brass unexpected combinations
+Option B - Color Block: Bold solid colors (Klein blue, millennial pink, emerald)
+Option C - Pattern: Geometric patterns, terrazzo, or Memphis design
+Option D - Organic: Flowing fabric, billowing smoke, or liquid splash (frozen)
+Option E - Architectural: Interesting angles, window shadows, staircase geometry
+Option F - Phenomena: Prism effects, rainbow refractions, or sunset colors
+Option G - Floating: Levitation effect with invisible suspension
+
+Approach:
+- Product: Hero and completely clear focal point
+- Background: Artistic complement without overwhelming
+- Quality: Magazine editorial (Vogue, Wallpaper, Kinfolk)
+- Execution: Professional, intentional, not accidental
+
+Product unchanged.`,
+
+        `${baseContext}
+
+CRITICAL: Keep product 100% identical. Only change background boldly.
+
+BOLD STATEMENT - Choose ONE high-impact direction:
+Option A - Metallic: Rose gold, copper, or silver foil with reflections
+Option B - Gradient: Bold color gradients (sunset, ocean, aurora)
+Option C - Dimensional: Impossible geometry, M.C. Escher perspectives
+Option D - Maximalist: Controlled chaos with complementary elements
+Option E - Monochrome: All one color family with tonal variations
+Option F - High Key: Everything super bright except product (inverse studio)
+Option G - Atmospheric: Visible fog, mist, or dust in dramatic light
+Option H - Pop Art: Bright solid color with graphic or halftone patterns
+
+Concept:
+- Statement aligning with product personality
+- Scroll-stopping without gimmicks
+- Product integrity maintained
+- Viral potential - shareable quality
+- Professional execution, not amateur
+
+Product unchanged.`,
       ],
     };
 
-    const prompts = scenarioInstructions[scenario] || scenarioInstructions['catalog'];
+    const selectedScenarioPrompts = scenarioPrompts[scenario] || scenarioPrompts['random'];
     
-    // Return all 3 prompts for variety
-    return prompts;
+    // Return: [catalog prompt] + [3 scenario prompts] = 4 total
+    return [catalogPrompt, ...selectedScenarioPrompts];
   }
 
   /**

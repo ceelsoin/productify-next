@@ -89,6 +89,7 @@ export default function GeneratePage() {
   const [isPlayingVoicePreview, setIsPlayingVoicePreview] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
   
   // Product information
   const [productInfo, setProductInfo] = useState({
@@ -241,12 +242,48 @@ export default function GeneratePage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setSelectedFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreviewUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      processFile(file);
+    }
+  };
+
+  const processFile = (file: File) => {
+    setSelectedFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPreviewUrl(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDragEnter = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      // Validate file type
+      if (file.type.startsWith('image/')) {
+        processFile(file);
+      }
     }
   };
 
@@ -483,10 +520,24 @@ export default function GeneratePage() {
                 </h2>
 
                 {!previewUrl ? (
-                  <label className="group relative flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-background p-12 transition-colors hover:border-primary-500 hover:bg-background-secondary">
-                    <Upload className="mb-4 h-12 w-12 text-text-tertiary transition-colors group-hover:text-primary-400" />
+                  <label 
+                    className={`group relative flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-12 transition-all ${
+                      isDragging 
+                        ? 'border-primary-500 bg-primary-500/10 scale-105' 
+                        : 'border-border bg-background hover:border-primary-500 hover:bg-background-secondary'
+                    }`}
+                    onDragEnter={handleDragEnter}
+                    onDragLeave={handleDragLeave}
+                    onDragOver={handleDragOver}
+                    onDrop={handleDrop}
+                  >
+                    <Upload className={`mb-4 h-12 w-12 transition-colors ${
+                      isDragging 
+                        ? 'text-primary-400 scale-110' 
+                        : 'text-text-tertiary group-hover:text-primary-400'
+                    }`} />
                     <p className="mb-2 text-center font-medium text-text-primary">
-                      Clique para fazer upload
+                      {isDragging ? 'Solte a imagem aqui' : 'Clique ou arraste uma imagem'}
                     </p>
                     <p className="text-center text-sm text-text-tertiary">
                       PNG, JPG ou WEBP até 10MB
