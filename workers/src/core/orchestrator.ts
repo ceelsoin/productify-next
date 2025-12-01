@@ -10,6 +10,8 @@ import {
 } from './types';
 import { Pipeline, validatePipeline } from './pipelines';
 import { RefundService } from '../services/refund.service';
+import { User } from '../models/user.model';
+import axios from 'axios';
 
 /**
  * Pipeline execution state
@@ -289,6 +291,12 @@ class PipelineOrchestrator {
         await Job.findByIdAndUpdate(jobId, {
           $set: { status: JobStatus.COMPLETED, progress: 100, updatedAt: new Date() },
         });
+        
+        // Enviar notificação de job concluído
+        this.sendJobCompletedNotification(job).catch(err => 
+          console.error('[Orchestrator] Failed to send completion notification:', err)
+        );
+        
         this.executions.delete(jobId);
       }
     } else {
@@ -304,16 +312,24 @@ class PipelineOrchestrator {
       });
       
       // Process automatic refund based on completion
+      let creditsRefunded = 0;
       try {
         console.log(`[Orchestrator] Processing refund for failed job ${jobId} (${completedItems}/${totalItems} completed)`);
         
         if (completedItems === 0) {
           // Full refund if nothing completed
-          await RefundService.processJobFailureRefund(jobId);
+          const result = await RefundService.processJobFailureRefund(jobId);
+          creditsRefunded = result.refundAmount;
         } else if (completedItems < totalItems) {
           // Partial refund if some items completed
-          await RefundService.processPartialRefund(jobId, completedItems, totalItems);
+          const result = await RefundService.processPartialRefund(jobId, completedItems, totalItems);
+          creditsRefunded = result.refundAmount;
         }
+        
+        // Enviar notificação de job com falha
+        this.sendJobFailedNotification(job, creditsRefunded).catch(err => 
+          console.error('[Orchestrator] Failed to send failure notification:', err)
+        );
       } catch (error) {
         console.error(`[Orchestrator] Failed to process refund for job ${jobId}:`, error);
       }
@@ -367,6 +383,54 @@ class PipelineOrchestrator {
       completedItems: Array.from(execution.completedItems),
       totalItems: execution.completedItems.size,
     };
+  }
+
+  /**
+   * Send job completed notification
+   */
+  private async sendJobCompletedNotification(job: any): Promise<void> {
+    try {
+      const user = await User.findById(job.user);
+      if (!user) return;
+
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      
+      await axios.post(`${appUrl}/api/notifications/job-completed`, {
+        userName: user.name,
+        userEmail: user.email,
+        productName: job.productInfo.name,
+        jobId: job._id.toString(),
+        itemsCompleted: job.items.filter((item: any) => item.status === 'completed').length,
+      });
+
+      console.log('[Orchestrator] Job completed notification sent');
+    } catch (error) {
+      console.error('[Orchestrator] Failed to send job completed notification:', error);
+    }
+  }
+
+  /**
+   * Send job failed notification
+   */
+  private async sendJobFailedNotification(job: any, creditsRefunded: number): Promise<void> {
+    try {
+      const user = await User.findById(job.user);
+      if (!user) return;
+
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      
+      await axios.post(`${appUrl}/api/notifications/job-failed`, {
+        userName: user.name,
+        userEmail: user.email,
+        productName: job.productInfo.name,
+        jobId: job._id.toString(),
+        creditsRefunded,
+      });
+
+      console.log('[Orchestrator] Job failed notification sent');
+    } catch (error) {
+      console.error('[Orchestrator] Failed to send job failed notification:', error);
+    }
   }
 }
 

@@ -5,6 +5,7 @@ import FacebookProvider from 'next-auth/providers/facebook';
 import TwitterProvider from 'next-auth/providers/twitter';
 import { connectDB } from './mongodb';
 import { User } from './models/User';
+import { sendLoginAlert } from './notifications';
 
 export const authConfig: NextAuthConfig = {
   providers: [
@@ -63,7 +64,7 @@ export const authConfig: NextAuthConfig = {
     }),
   ],
   callbacks: {
-    async signIn({ user, account }) {
+    async signIn({ user, account, profile }) {
       if (account?.provider !== 'credentials') {
         await connectDB();
 
@@ -78,6 +79,19 @@ export const authConfig: NextAuthConfig = {
             emailVerified: new Date(),
           });
         }
+      }
+
+      // Enviar notificação de login (async, não bloqueia o login)
+      if (user.email && user.name) {
+        sendLoginAlert({
+          userName: user.name,
+          userEmail: user.email,
+          ip: 'N/A', // TODO: Capturar IP real do request
+          device: 'Navegador',
+          location: 'Brasil',
+        }).catch((error) => {
+          console.error('Erro ao enviar notificação de login:', error);
+        });
       }
 
       return true;

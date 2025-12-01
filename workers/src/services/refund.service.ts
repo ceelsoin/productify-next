@@ -40,7 +40,7 @@ export class RefundService {
   /**
    * Process refund for a failed job
    */
-  static async processJobFailureRefund(jobId: string): Promise<void> {
+  static async processJobFailureRefund(jobId: string): Promise<{ refundAmount: number }> {
     const job = await Job.findById(jobId);
     
     if (!job) {
@@ -54,7 +54,7 @@ export class RefundService {
 
     if (job.creditsRefunded > 0) {
       console.log(`Job ${jobId} already refunded`);
-      return;
+      return { refundAmount: 0 };
     }
 
     // Calculate refund amount (refund all spent credits)
@@ -62,7 +62,7 @@ export class RefundService {
 
     if (refundAmount <= 0) {
       console.log(`No credits to refund for job ${jobId}`);
-      return;
+      return { refundAmount: 0 };
     }
 
     // Create refund transaction
@@ -82,6 +82,7 @@ export class RefundService {
     });
 
     console.log(`✅ Refund processed for job ${jobId}: ${refundAmount} credits`);
+    return { refundAmount };
   }
 
   /**
@@ -91,7 +92,7 @@ export class RefundService {
     jobId: string,
     completedItems: number,
     totalItems: number
-  ): Promise<void> {
+  ): Promise<{ refundAmount: number }> {
     const job = await Job.findById(jobId);
     
     if (!job) {
@@ -100,7 +101,7 @@ export class RefundService {
 
     if (job.creditsRefunded > 0) {
       console.log(`Job ${jobId} already refunded`);
-      return;
+      return { refundAmount: 0 };
     }
 
     // Calculate refund amount based on incomplete items
@@ -110,7 +111,7 @@ export class RefundService {
 
     if (refundAmount <= 0) {
       console.log(`No credits to refund for job ${jobId}`);
-      return;
+      return { refundAmount: 0 };
     }
 
     // Create refund transaction
@@ -130,6 +131,7 @@ export class RefundService {
     });
 
     console.log(`✅ Partial refund processed for job ${jobId}: ${refundAmount} credits`);
+    return { refundAmount };
   }
 
   /**

@@ -40,7 +40,7 @@ export function Header() {
 
               {/* Credits Badge */}
               <Link
-                href="/credits"
+                href="/settings/credits"
                 className="flex items-center gap-2 rounded-lg border border-border bg-background-tertiary px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:border-primary-500/50"
               >
                 <Coins className="h-4 w-4 text-primary-400" />
