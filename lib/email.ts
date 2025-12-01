@@ -451,3 +451,97 @@ export function getCreditsLowEmailTemplate(
     url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/settings/credits`,
   });
 }
+
+// Email de edição de imagem concluída
+export function getImageEditCompletedEmailTemplate(
+  name: string,
+  editPrompt: string,
+  editedImageUrl: string,
+  editId: string
+): string {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const fullImageUrl = editedImageUrl.startsWith('http') ? editedImageUrl : `${appUrl}${editedImageUrl}`;
+  
+  const content = `
+    <h2 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 600; color: #ffffff;">
+      Ótima notícia, ${name}!
+    </h2>
+    
+    <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e5e5e5;">
+      Sua imagem foi editada com sucesso usando IA Nano Banana Edit!
+    </p>
+    
+    <div style="margin: 30px 0; padding: 20px; background-color: #262626; border-radius: 8px;">
+      <p style="margin: 0 0 10px 0; font-size: 14px; color: #a3a3a3;">
+        <strong>Prompt de Edição:</strong>
+      </p>
+      <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #e5e5e5; font-style: italic;">
+        "${editPrompt}"
+      </p>
+    </div>
+    
+    <div style="margin: 30px 0; text-align: center;">
+      <img src="${fullImageUrl}" alt="Imagem Editada" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);" />
+    </div>
+    
+    <p style="margin: 30px 0 0 0; font-size: 16px; line-height: 1.6; color: #e5e5e5;">
+      Baixe sua imagem ou faça novas edições na plataforma.
+    </p>
+  `;
+
+  return getEmailBaseTemplate('Imagem Editada', '🎨', content, {
+    text: 'Ver Imagem Editada',
+    url: fullImageUrl,
+  });
+}
+
+// Email de falha na edição de imagem
+export function getImageEditFailedEmailTemplate(
+  name: string,
+  editPrompt: string,
+  error: string,
+  creditsRefunded: number
+): string {
+  const content = `
+    <h2 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 600; color: #ffffff;">
+      Ops, ${name}...
+    </h2>
+    
+    <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e5e5e5;">
+      Infelizmente a edição da sua imagem encontrou um problema e não pôde ser concluída.
+    </p>
+    
+    <div style="margin: 30px 0; padding: 20px; background-color: #262626; border-radius: 8px;">
+      <p style="margin: 0 0 10px 0; font-size: 14px; color: #a3a3a3;">
+        <strong>Prompt de Edição:</strong>
+      </p>
+      <p style="margin: 0 0 15px 0; font-size: 15px; line-height: 1.6; color: #e5e5e5; font-style: italic;">
+        "${editPrompt}"
+      </p>
+      <p style="margin: 0 0 10px 0; font-size: 14px; color: #a3a3a3;">
+        <strong>Erro:</strong>
+      </p>
+      <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #ef4444;">
+        ${error}
+      </p>
+    </div>
+    
+    <div style="margin: 30px 0; padding: 20px; background-color: #262626; border-radius: 6px; border-left: 4px solid #10b981;">
+      <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #e5e5e5;">
+        ✅ <strong>Reembolso Processado</strong>
+      </p>
+      <p style="margin: 10px 0 0 0; font-size: 14px; line-height: 1.6; color: #a3a3a3;">
+        Devolvemos <strong style="color: #10b981;">${creditsRefunded} créditos</strong> para sua conta. Você pode tentar novamente quando quiser!
+      </p>
+    </div>
+    
+    <p style="margin: 30px 0 0 0; font-size: 16px; line-height: 1.6; color: #e5e5e5;">
+      Se o problema persistir, entre em contato com nosso suporte.
+    </p>
+  `;
+
+  return getEmailBaseTemplate('Falha na Edição', '⚠️', content, {
+    text: 'Tentar Novamente',
+    url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/my-products`,
+  });
+}

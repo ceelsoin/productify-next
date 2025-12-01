@@ -5,6 +5,8 @@ import {
   getJobFailedEmailTemplate,
   getCreditsAddedEmailTemplate,
   getCreditsLowEmailTemplate,
+  getImageEditCompletedEmailTemplate,
+  getImageEditFailedEmailTemplate,
 } from './email';
 
 export interface LoginAlertData {
@@ -43,6 +45,22 @@ export interface CreditsLowData {
   userName: string;
   userEmail: string;
   remainingCredits: number;
+}
+
+export interface ImageEditCompletedData {
+  userName: string;
+  userEmail: string;
+  editPrompt: string;
+  editedImageUrl: string;
+  editId: string;
+}
+
+export interface ImageEditFailedData {
+  userName: string;
+  userEmail: string;
+  editPrompt: string;
+  error: string;
+  creditsRefunded: number;
 }
 
 /**
@@ -171,6 +189,60 @@ export async function sendCreditsLowNotification(data: CreditsLowData) {
     return result;
   } catch (error) {
     console.error('❌ Erro ao enviar email de créditos baixos:', error);
+    return { success: false, error };
+  }
+}
+
+/**
+ * Envia notificação de edição de imagem concluída
+ */
+export async function sendImageEditCompletedNotification(data: ImageEditCompletedData) {
+  try {
+    const result = await sendEmail({
+      to: data.userEmail,
+      subject: '🎨 Sua Imagem Foi Editada com Sucesso!',
+      html: getImageEditCompletedEmailTemplate(
+        data.userName,
+        data.editPrompt,
+        data.editedImageUrl,
+        data.editId
+      ),
+    });
+
+    if (result.success) {
+      console.log('✅ Email de edição concluída enviado:', data.userEmail);
+    }
+
+    return result;
+  } catch (error) {
+    console.error('❌ Erro ao enviar email de edição concluída:', error);
+    return { success: false, error };
+  }
+}
+
+/**
+ * Envia notificação de falha na edição de imagem
+ */
+export async function sendImageEditFailedNotification(data: ImageEditFailedData) {
+  try {
+    const result = await sendEmail({
+      to: data.userEmail,
+      subject: '⚠️ Falha na Edição de Imagem - Productify',
+      html: getImageEditFailedEmailTemplate(
+        data.userName,
+        data.editPrompt,
+        data.error,
+        data.creditsRefunded
+      ),
+    });
+
+    if (result.success) {
+      console.log('✅ Email de edição falhada enviado:', data.userEmail);
+    }
+
+    return result;
+  } catch (error) {
+    console.error('❌ Erro ao enviar email de edição falhada:', error);
     return { success: false, error };
   }
 }

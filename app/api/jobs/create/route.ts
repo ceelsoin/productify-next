@@ -3,10 +3,9 @@ import { connectDB } from '@/lib/mongodb';
 import { User } from '@/lib/models/User';
 import { Job } from '@/lib/models/Job';
 import { TransactionService } from '@/lib/services/transaction.service';
-import { writeFile } from 'fs/promises';
-import { join } from 'path';
 import { randomBytes } from 'crypto';
 import { auth } from '@/lib/auth';
+import * as aws from 'aws-sdk';
 
 export async function POST(request: NextRequest) {
   try {
@@ -117,7 +116,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Salvar imagem no filesystem (temporariamente - depois você pode mover para S3/GCS)
+    // Upload de imagem para S3
     const bytes = await imageFile.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
@@ -125,16 +124,12 @@ export async function POST(request: NextRequest) {
     const timestamp = Date.now();
     const randomString = randomBytes(8).toString('hex');
     const extension = imageFile.name.split('.').pop() || 'jpg';
-    const filename = `${timestamp}-${randomString}.${extension}`;
+    const filename = `product-${timestamp}-${randomString}.${extension}`;
     
-    // Criar diretório de uploads se não existir
-    const uploadsDir = join(process.cwd(), 'public', 'uploads', 'products');
-    const filePath = join(uploadsDir, filename);
+    // Fazer upload para S3 usando serviço AWS SDK
+    const s3ImageUrl = await uploadToS3(buffer, filename, imageFile.type);
     
-    // Criar diretórios recursivamente
-    await writeFile(filePath, buffer);
-
-    const imageUrl = `/uploads/products/${filename}`;
+    console.log(`[Jobs] Image uploaded to S3: ${s3ImageUrl}`);
 
     // Criar job no banco de dados
     console.log('🗄️ Next.js Database:', Job.db.name);
@@ -154,7 +149,7 @@ export async function POST(request: NextRequest) {
         },
       },
       originalImage: {
-        url: imageUrl,
+        url: s3ImageUrl,
         filename: filename,
         size: imageFile.size,
         mimeType: imageFile.type,
@@ -247,4 +242,31 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+/**
+ * Upload image to S3
+ */
+async function uploadToS3(buffer: Buffer, filename: string, contentType: string): Promise<string> {
+  const s3 = new aws.S3({
+    signatureVersion: 'v4',
+    endpoint: new aws.Endpoint(process.env.S3_ENDPOINT || ''),
+    secretAccessKey: process.env.S3_SECRET_KEY || '',
+    accessKeyId: process.env.S3_ACCESS_KEY || '',
+    s3ForcePathStyle: true,
+  });
+
+  const bucketName = process.env.S3_BUCKET_NAME || '';
+  const key = `products/${filename}`;
+
+  await s3.putObject({
+    Bucket: bucketName,
+    Key: key,
+    Body: buffer,
+    ContentType: contentType,
+    ACL: 'public-read', // Tornar público para Kie.ai acessar
+  }).promise();
+
+  const publicUrl = `https://${process.env.S3_ENDPOINT}/${bucketName}/${key}`;
+  return publicUrl;
 }

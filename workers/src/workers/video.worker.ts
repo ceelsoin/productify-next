@@ -9,10 +9,11 @@ import {
 } from '../core/types';
 import { storageService } from '../services/storage.service';
 import { mongoService } from '../services/mongodb.service';
+import { Job } from '../../../lib/models/Job';
 import { queueManager } from '../core/queue-manager';
 import { bundle } from '@remotion/bundler';
 import { renderMedia, selectComposition } from '@remotion/renderer';
-import { getAmbientMusicById } from '../../../lib/ambient-music';
+import { getAmbientMusicById } from '../constants/ambient-music';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -111,7 +112,6 @@ export class VideoWorker extends BaseWorker {
     jobId: string,
     itemIndex: number
   ): Promise<string[]> {
-    const Job = mongoService.models.Job;
     const jobDoc = await Job.findById(jobId);
 
     if (!jobDoc || !jobDoc.items[itemIndex]) {
@@ -140,7 +140,6 @@ export class VideoWorker extends BaseWorker {
   ): Promise<{ url: string; type: 'voiceover' | 'ambient' }> {
     if (config.audioType === 'voiceover') {
       // Get voiceover from previous step
-      const Job = mongoService.models.Job;
       const jobDoc = await Job.findById(jobId);
 
       if (!jobDoc || !jobDoc.items[itemIndex]) {
@@ -185,7 +184,6 @@ export class VideoWorker extends BaseWorker {
     jobId: string,
     itemIndex: number
   ): Promise<any[] | null> {
-    const Job = mongoService.models.Job;
     const jobDoc = await Job.findById(jobId);
 
     if (!jobDoc || !jobDoc.items[itemIndex]) {

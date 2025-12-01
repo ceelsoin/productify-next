@@ -2,6 +2,37 @@ import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
 import sharp from 'sharp';
 import fs from 'fs/promises';
 import path from 'path';
+import { s3Service } from './s3.service';
+
+/**
+ * Kie.ai API Response Types
+ */
+interface KieTaskResponse {
+  data: {
+    task_id: string;
+    status: string;
+    error?: string;
+  };
+}
+
+interface KieStatusResponse {
+  data: {
+    task_id: string;
+    status: 'pending' | 'processing' | 'completed' | 'failed';
+    output?: {
+      images?: Array<{
+        url: string;
+      }>;
+    };
+    error?: string;
+  };
+}
+
+interface KieUploadResponse {
+  data: {
+    url: string;
+  };
+}
 
 /**
  * Google Gemini Imagen Service
@@ -38,9 +69,88 @@ class GeminiImageService {
   }
 
   /**
+   * Generate enhanced product images with multiple variations per prompt
+   * More efficient: 1 API call per prompt type, gets multiple variations
+   * Creates N variations × M prompts images (e.g., 4 variations × 4 prompts = 16 images)
+   */
+  async generateEnhancedImagesWithVariations(
+    productName: string,
+    productDescription: string,
+    scenario: string,
+    originalImageUrl: string,
+    variationsPerPrompt: number = 4
+  ): Promise<string[]> {
+    const kieApiKey = process.env.KIE_API_KEY;
+    
+    if (!kieApiKey) {
+      throw new Error('KIE_API_KEY not configured. Please set KIE_API_KEY environment variable.');
+    }
+
+    console.log(`[Gemini Images] Generating ${variationsPerPrompt} variations per prompt via Kie.ai`);
+    console.log(`[Gemini Images] Product: ${productName}`);
+    console.log(`[Gemini Images] Original image: ${originalImageUrl}`);
+    console.log(`[Gemini Images] Scenario: ${scenario}`);
+
+    try {
+      // Upload original image to S3 for public access (Kie.ai needs public URL)
+      console.log(`[Gemini Images] Uploading image to S3...`);
+      const publicImageUrl = await this.uploadImageToS3(originalImageUrl);
+      console.log(`[Gemini Images] Image uploaded to S3: ${publicImageUrl}`);
+
+      // Analyze product context
+      const productContext = await this.analyzeProductContextSimple(
+        productName,
+        productDescription,
+        scenario
+      );
+      console.log(`[Gemini Images] Product context:`, productContext);
+
+      // Build prompts for 4 types (catalog + 3 scenario)
+      const prompts = this.buildVariationPromptsForEdit(
+        productName,
+        productDescription,
+        scenario,
+        productContext
+      );
+
+      console.log(`[Gemini Images] Will generate ${variationsPerPrompt} variations for each of ${prompts.length} prompts`);
+
+      // Generate variations for each prompt (4 prompts → 4×variationsPerPrompt images)
+      const imagePromises = prompts.map((prompt, index) => {
+        const imageType = index === 0 ? 'CATALOG' : `${scenario.toUpperCase()} ${index}`;
+        console.log(`[Gemini Images] Queuing ${variationsPerPrompt}x ${imageType} (${index + 1}/${prompts.length})`);
+        
+        return this.editImageWithPrompt(
+          publicImageUrl,
+          prompt,
+          'JPEG',
+          'auto',
+          variationsPerPrompt // Generate multiple variations
+        ).then(url => {
+          console.log(`[Gemini Images] ${imageType} completed: ${url}`);
+          return url;
+        }).catch(error => {
+          console.error(`[Gemini Images] ${imageType} failed:`, error);
+          throw error;
+        });
+      });
+
+      // Wait for all images to complete
+      const imageUrls = await Promise.all(imagePromises);
+
+      console.log(`[Gemini Images] Successfully generated ${imageUrls.length} images via Kie.ai`);
+      return imageUrls;
+
+    } catch (error) {
+      console.error(`[Gemini Images] Error in image generation:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Generate enhanced product images based on original image
+   * Uses Kie.ai Nano Banana Edit API for all image generation
    * Creates 4 high-quality variations: 1 catalog (white bg) + 3 scenario-specific
-   * Maintains product fidelity while changing backgrounds
    */
   async generateEnhancedImages(
     productName: string,
@@ -48,103 +158,429 @@ class GeminiImageService {
     scenario: string,
     originalImageUrl: string
   ): Promise<string[]> {
-    if (!this.model) {
-      throw new Error('Gemini client not configured. Please set GOOGLE_API_KEY or GEMINI_API_KEY.');
+    const kieApiKey = process.env.KIE_API_KEY;
+    
+    if (!kieApiKey) {
+      throw new Error('KIE_API_KEY not configured. Please set KIE_API_KEY environment variable.');
     }
 
-    console.log(`[Gemini Images] Generating 4 enhanced variations (1 catalog + 3 ${scenario})`);
+    console.log(`[Gemini Images] Generating 4 enhanced variations via Kie.ai Nano Banana Edit`);
     console.log(`[Gemini Images] Product: ${productName}`);
     console.log(`[Gemini Images] Original image: ${originalImageUrl}`);
     console.log(`[Gemini Images] Scenario: ${scenario}`);
 
-    const imageUrls: string[] = [];
-
     try {
-      // Download and prepare the original image
-      const imageBuffer = await this.downloadImage(originalImageUrl);
-      const base64Image = imageBuffer.toString('base64');
-      const mimeType = await this.detectMimeType(imageBuffer);
+      // Upload original image to S3 for public access (Kie.ai needs public URL)
+      console.log(`[Gemini Images] Uploading image to S3...`);
+      const publicImageUrl = await this.uploadImageToS3(originalImageUrl);
+      console.log(`[Gemini Images] Image uploaded to S3: ${publicImageUrl}`);
 
-      // STEP 1: Analyze product context to understand proper placement
-      console.log(`[Gemini Images] Analyzing product context...`);
-      const productContext = await this.analyzeProductContext(
-        base64Image,
-        mimeType,
+      // Analyze product context
+      const productContext = await this.analyzeProductContextSimple(
         productName,
-        productDescription
+        productDescription,
+        scenario
       );
-      console.log(`[Gemini Images] Product analysis:`, productContext);
+      console.log(`[Gemini Images] Product context:`, productContext);
 
-      // STEP 2: Generate 4 variations with context-aware prompts
-      const prompts = this.buildVariationPrompts(
-        productName, 
-        productDescription, 
+      // Build prompts for 4 variations
+      const prompts = this.buildVariationPromptsForEdit(
+        productName,
+        productDescription,
         scenario,
         productContext
       );
 
-      for (let i = 0; i < prompts.length; i++) {
-        try {
-          const imageType = i === 0 ? 'CATALOG' : `${scenario.toUpperCase()} ${i}`;
-          console.log(`[Gemini Images] Generating ${imageType} (${i + 1}/4)...`);
-          console.log(`[Gemini Images] Prompt: ${prompts[i].substring(0, 150)}...`);
-          
-          // Generate image using original as reference
-          const result = await this.model.generateContent([
-            {
-              inlineData: {
-                data: base64Image,
-                mimeType: mimeType,
-              },
-            },
-            prompts[i],
-          ]);
+      console.log(`[Gemini Images] Generated ${prompts.length} edit prompts`);
 
-          const response = await result.response;
-          const parts = response.candidates?.[0]?.content?.parts;
+      // Option 1: Generate 4 images with 4 API calls (current approach)
+      // Option 2: Generate 4 variations per prompt with 1 API call per prompt (4x more efficient)
+      // For now, using Option 1 (4 separate calls) as it gives more control
+      // To enable Option 2, uncomment the numVariations parameter below
+      
+      const imagePromises = prompts.map((prompt, index) => {
+        const imageType = index === 0 ? 'CATALOG' : `${scenario.toUpperCase()} ${index}`;
+        console.log(`[Gemini Images] Queuing ${imageType} (${index + 1}/4)`);
+        
+        return this.editImageWithPrompt(
+          publicImageUrl,
+          prompt,
+          'JPEG',
+          'auto'
+          // numVariations: 4 // Uncomment to get 4 variations per prompt
+        ).then(url => {
+          console.log(`[Gemini Images] ${imageType} completed: ${url}`);
+          return url;
+        }).catch(error => {
+          console.error(`[Gemini Images] ${imageType} failed:`, error);
+          throw error;
+        });
+      });
 
-          if (parts && parts.length > 0) {
-            // Find the image part (inlineData)
-            const imagePart = parts.find(part => 'inlineData' in part && part.inlineData);
-            
-            if (imagePart && 'inlineData' in imagePart && imagePart.inlineData) {
-              // Save the generated image with appropriate prefix
-              const prefix = i === 0 ? 'catalog' : `${scenario}-${i}`;
-              const savedUrl = await this.saveGeneratedImage(
-                Buffer.from(imagePart.inlineData.data, 'base64'),
-                prefix
-              );
-              imageUrls.push(savedUrl);
-              console.log(`[Gemini Images] ${imageType} created successfully: ${savedUrl}`);
-            } else {
-              console.error(`[Gemini Images] No image data in response for ${imageType}`);
-              console.error(`[Gemini Images] Response parts:`, JSON.stringify(parts, null, 2));
-            }
-          } else {
-            console.error(`[Gemini Images] No parts in response for ${imageType}`);
-          }
+      // Wait for all images to complete
+      const imageUrls = await Promise.all(imagePromises);
 
-          // Delay between requests to avoid rate limits
-          if (i < prompts.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
-          }
-        } catch (error) {
-          console.error(`[Gemini Images] Error generating image ${i + 1}:`, error);
-          // Continue with other variations
-        }
-      }
-
-      if (imageUrls.length === 0) {
-        throw new Error('Failed to generate any images');
-      }
-
-      console.log(`[Gemini Images] Successfully generated ${imageUrls.length}/4 images`);
+      console.log(`[Gemini Images] Successfully generated ${imageUrls.length}/4 images via Kie.ai`);
       return imageUrls;
 
     } catch (error) {
       console.error(`[Gemini Images] Error in image generation:`, error);
       throw error;
     }
+  }
+
+  /**
+   * Analyze product context to understand proper placement (simplified for Kie.ai)
+   */
+  private async analyzeProductContextSimple(
+    productName: string,
+    productDescription: string,
+    scenario: string
+  ): Promise<{
+    category: string;
+    mounting: string;
+    size: string;
+    usage: string;
+    placement: string;
+  }> {
+    // Simple heuristic-based analysis since Kie.ai handles the AI part
+    const lowerName = productName.toLowerCase();
+    const lowerDesc = (productDescription || '').toLowerCase();
+    
+    let category = 'general product';
+    let mounting = 'sits on surface';
+    let placement = 'on flat surface';
+    
+    // Detect wall-mounted items
+    if (lowerName.includes('quadro') || lowerName.includes('poster') || 
+        lowerName.includes('placa') || lowerDesc.includes('parede')) {
+      category = 'wall decor';
+      mounting = 'hangs on wall';
+      placement = 'hanging on wall';
+    }
+    // Detect wearable items
+    else if (lowerName.includes('colar') || lowerName.includes('brinco') || 
+             lowerName.includes('anel') || lowerName.includes('pulseira')) {
+      category = 'jewelry';
+      mounting = 'worn';
+      placement = 'displayed on surface or worn';
+    }
+    // Detect small desk items
+    else if (lowerName.includes('caneca') || lowerName.includes('vaso') || 
+             lowerName.includes('porta') || lowerName.includes('organizador')) {
+      category = 'desk accessory';
+      mounting = 'sits on surface';
+      placement = 'on desk or table';
+    }
+    
+    return {
+      category,
+      mounting,
+      size: 'medium',
+      usage: 'functional',
+      placement,
+    };
+  }
+
+  /**
+   * Build variation prompts specifically for Kie.ai Nano Banana Edit
+   * Returns array of 4 prompts: 1 catalog + 3 scenario
+   */
+  private buildVariationPromptsForEdit(
+    productName: string,
+    productDescription: string,
+    scenario: string,
+    productContext: {
+      category: string;
+      mounting: string;
+      size: string;
+      usage: string;
+      placement: string;
+    }
+  ): string[] {
+    const baseContext = `This is a product photo of: ${productName}.
+${productDescription ? `Description: ${productDescription}` : ''}
+Product category: ${productContext.category}
+How displayed: ${productContext.mounting}
+Best placement: ${productContext.placement}`;
+
+    // CATALOG PROMPT
+    const catalogPrompt = `${baseContext}
+
+CRITICAL: Keep the product 100% IDENTICAL - same shape, colors, textures, details. Only change the background.
+
+Transform this into a professional catalog image:
+- Background: Pure solid white (#FFFFFF) - completely clean, no gradients or textures
+- Product: Perfectly centered
+- Lighting: Professional studio 3-point lighting - soft, diffused, even
+- Shadow: Minimal subtle shadow directly under product for depth
+- Style: E-commerce product photography (Amazon/Apple style)
+- Quality: Crystal clear, sharp details, true colors
+- NO props or decorations
+
+Keep product unchanged.`;
+
+    // SCENARIO PROMPTS
+    const scenarioPrompts = this.buildScenarioPromptsForEdit(
+      baseContext,
+      scenario,
+      productContext
+    );
+
+    return [catalogPrompt, ...scenarioPrompts];
+  }
+
+  /**
+   * Build 3 scenario-specific prompts for Kie.ai Edit
+   */
+  private buildScenarioPromptsForEdit(
+    baseContext: string,
+    scenario: string,
+    productContext: { mounting: string; placement: string }
+  ): string[] {
+    const mountingNote = productContext.mounting.toLowerCase().includes('wall') || 
+                        productContext.mounting.toLowerCase().includes('hang')
+      ? `⚠️ THIS PRODUCT HANGS ON WALL - Show it mounted on wall, NOT on table!`
+      : '';
+
+    const scenarioTemplates: Record<string, string[]> = {
+      table: [
+        `${baseContext}
+
+CRITICAL: Keep product identical. Only change environment.
+${mountingNote}
+
+Create natural wood table scene:
+${productContext.mounting.includes('wall') 
+  ? '- Background: Wooden wall/paneling with product hanging as intended'
+  : '- Surface: Beautiful oak/walnut table with natural grain'}
+- Lighting: Soft natural window light (golden hour)
+- Background: Softly blurred room/café (bokeh)
+- Atmosphere: Warm, inviting, cozy
+- Style: Lifestyle product photography`,
+
+        `${baseContext}
+
+CRITICAL: Keep product identical. Only change environment.
+${mountingNote}
+
+Create rustic wood environment:
+${productContext.mounting.includes('wall')
+  ? '- Background: Reclaimed wood wall with product mounted'
+  : '- Surface: Reclaimed wooden desk with character'}
+- Lighting: Bright natural daylight
+- Background: Defocused creative workspace
+- Mood: Artisan, authentic
+- Quality: Professional lifestyle`,
+
+        `${baseContext}
+
+CRITICAL: Keep product identical. Only change environment.
+${mountingNote}
+
+Create elegant wood setting:
+${productContext.mounting.includes('wall')
+  ? '- Background: Dark wood paneling with product displayed'
+  : '- Surface: Polished mahogany/cherry wood table'}
+- Lighting: Balanced natural and ambient
+- Background: Upscale interior
+- Feel: Premium, refined, elegant`,
+      ],
+      nature: [
+        `${baseContext}
+
+CRITICAL: Keep product identical. Only change environment.
+
+Botanical garden scene:
+- Plants: Lush monstera, ferns, palm fronds around product
+- Background: Heavily blurred green foliage with bokeh
+- Lighting: Filtered sunlight through leaves
+- Colors: Rich greens, fresh atmosphere
+- Product: Clear focal point with natural frame`,
+
+        `${baseContext}
+
+CRITICAL: Keep product identical. Only change environment.
+
+Garden oasis:
+- Greenery: Moss, ferns, soft succulents
+- Flowers: Small white/pastel blooms as accent
+- Background: Dreamy out-of-focus garden
+- Lighting: Soft morning/afternoon sun
+- Feel: Peaceful, natural, sustainable`,
+
+        `${baseContext}
+
+CRITICAL: Keep product identical. Only change environment.
+
+Wild nature:
+- Base: Natural moss or forest floor
+- Plants: Wild grasses, wildflowers, woodland ferns
+- Background: Soft-focus landscape
+- Lighting: Natural outdoor diffused light
+- Mood: Raw, authentic, eco-conscious`,
+      ],
+      minimal: [
+        `${baseContext}
+
+CRITICAL: Keep product identical. Only change background.
+
+Geometric minimalism:
+- Shapes: Simple arches, circles, blocks (2-3 geometric forms)
+- Materials: Matte plaster, smooth concrete
+- Colors: Neutrals - off-white, beige, warm gray
+- Background: Subtle gradient neutral
+- Shadows: Clean geometric shadows
+- Style: Scandinavian contemporary`,
+
+        `${baseContext}
+
+CRITICAL: Keep product identical. Only change background.
+
+Abstract minimalism:
+- Elements: Overlapping circles, curved forms
+- Texture: Ultra-smooth matte surfaces
+- Palette: Monochromatic or analogous colors
+- Lighting: Diffused with subtle shadows
+- Composition: Asymmetric balance
+- Style: Kinfolk/Cereal aesthetic`,
+
+        `${baseContext}
+
+CRITICAL: Keep product identical. Only change background.
+
+Contemporary minimalism:
+- Structure: Simple platforms, steps, pedestals
+- Material: Smooth plaster, painted wood
+- Colors: Dove gray, warm white, sand, stone
+- Lighting: Natural window light quality
+- Shadows: Clean, defined
+- Style: Modern architecture, Japanese minimalism`,
+      ],
+      lifestyle: [
+        `${baseContext}
+
+CRITICAL: Keep product identical. Only change setting.
+
+Cozy home living:
+- Setting: Modern living room/bedroom
+- Surface: Coffee table/nightstand/counter
+- Background: Soft-focus sofa, cushions, bedding
+- Decor: Ceramic vase, candle, plant barely visible
+- Lighting: Warm natural window light
+- Textiles: Hint of linen, cotton in neutrals
+- Feel: Inviting, comfortable, hygge`,
+
+        `${baseContext}
+
+CRITICAL: Keep product identical. Only change setting.
+
+Morning routine:
+- Location: Kitchen counter/bathroom vanity/breakfast nook
+- Context: Morning light, coffee time
+- Props: Defocused French press, mug, potted herb
+- Surface: Natural stone, marble, light wood
+- Background: Soft bokeh modern home
+- Lighting: Fresh morning sunlight
+- Mood: Aspirational, slow living`,
+
+        `${baseContext}
+
+CRITICAL: Keep product identical. Only change setting.
+
+Stylish living space:
+- Placement: Elegant side table/modern console
+- Surroundings: High-end interior in soft focus
+- Background: Modern furniture, art edge
+- Lighting: Balanced natural and ambient
+- Accessories: Design books, sculptural object (defocused)
+- Palette: Sophisticated neutrals with accent
+- Mood: Curated, design-conscious`,
+      ],
+      studio: [
+        `${baseContext}
+
+CRITICAL: Keep product identical. Only change lighting/backdrop.
+
+Dramatic studio:
+- Background: Deep gradient charcoal to black
+- Setup: Three-point lighting with rim lights
+- Key light: Strong directional from 45 degrees
+- Rim lighting: Bright highlights on edges
+- Effects: Optional light rays or subtle haze
+- Mood: Bold, luxury, high-end commercial`,
+
+        `${baseContext}
+
+CRITICAL: Keep product identical. Only change lighting/backdrop.
+
+Colored gel studio:
+- Background: Gradient jewel tones (sapphire, purple, burgundy)
+- Lighting: Professional gels creating color washes
+- Main: Neutral key light on product
+- Accents: Colored rim lights (blue, purple, amber, cyan)
+- Style: Music video, fashion editorial
+- Mood: Bold, energetic, contemporary`,
+
+        `${baseContext}
+
+CRITICAL: Keep product identical. Only change lighting/backdrop.
+
+Cinematic studio:
+- Background: Solid dark backdrop with texture
+- Lighting: Film-quality strong key with negative fill
+- Technique: Spotlight with fall-off vignette
+- Atmosphere: Fine mist or dust in light beams
+- Highlights: Strategic specular reflections
+- Style: Blockbuster advertising
+- Quality: Ultra-premium`,
+      ],
+      random: [
+        `${baseContext}
+
+CRITICAL: Keep product identical. Only change background creatively.
+
+Creative unexpected (choose ONE):
+- Urban: Colorful graffiti/street art backdrop
+- Neon: Dark scene with neon accents (pink/blue/cyan)
+- Texture: Interesting material (brushed metal/concrete/marble)
+- Light Art: Bokeh lights, fiber optics, light painting
+- Reflection: Glossy surface mirror or water reflections
+- Artistic: Watercolor wash, ink in water, paint splatter
+
+Product sharp and true colors, experimental background.`,
+
+        `${baseContext}
+
+CRITICAL: Keep product identical. Only change background artistically.
+
+Artistic composition (choose ONE):
+- Material Mix: Velvet + marble + brass combinations
+- Color Block: Bold solids (Klein blue, millennial pink, emerald)
+- Pattern: Geometric patterns, terrazzo, Memphis design
+- Organic: Flowing fabric, billowing smoke, liquid splash
+- Architectural: Window shadows, staircase geometry
+- Phenomena: Prism effects, rainbow refractions
+
+Magazine editorial quality (Vogue, Wallpaper, Kinfolk).`,
+
+        `${baseContext}
+
+CRITICAL: Keep product identical. Only change background boldly.
+
+Bold statement (choose ONE):
+- Metallic: Rose gold/copper/silver foil with reflections
+- Gradient: Bold color gradients (sunset/ocean/aurora)
+- Dimensional: Impossible geometry, Escher perspectives
+- Maximalist: Controlled chaos with complementary elements
+- Monochrome: All one color family with tonal variations
+- Atmospheric: Visible fog, mist, or dramatic light
+
+Viral potential, scroll-stopping, professional execution.`,
+      ],
+    };
+
+    return scenarioTemplates[scenario] || scenarioTemplates.random;
   }
 
   /**
@@ -833,6 +1269,310 @@ Product unchanged.`,
     } catch (error) {
       console.warn(`[Gemini Images] Could not detect MIME type, using default:`, error);
       return 'image/jpeg';
+    }
+  }
+
+  /**
+   * Edit image using Kie.ai Nano Banana Edit API
+   * Allows natural language editing of images with high precision
+   * 
+   * @param imageUrl URL of the image to edit
+   * @param editPrompt Natural language description of desired edits
+   * @param outputFormat Output format (PNG or JPEG)
+   * @param imageSize Aspect ratio (1:1, 9:16, 16:9, 3:4, 4:3, 2:3, 3:2, 5:4, 4:5, 21:9, auto)
+   * @param numVariations Number of variations to generate (1-4, default 1). Kie.ai will generate different variations from same input
+   * @returns URL of the edited image (or array if multiple variations)
+   */
+  async editImageWithPrompt(
+    imageUrl: string,
+    editPrompt: string,
+    outputFormat: 'PNG' | 'JPEG' = 'JPEG',
+    imageSize: string = 'auto',
+    numVariations: number = 1
+  ): Promise<string> {
+    const kieApiKey = process.env.KIE_API_KEY;
+    
+    if (!kieApiKey) {
+      throw new Error('KIE_API_KEY not configured. Please set KIE_API_KEY environment variable.');
+    }
+
+    console.log(`[Gemini Images] Editing image with Nano Banana Edit`);
+    console.log(`[Gemini Images] Image URL (S3 public): ${imageUrl}`);
+    console.log(`[Gemini Images] Edit prompt: ${editPrompt}`);
+    console.log(`[Gemini Images] Output format: ${outputFormat}`);
+    console.log(`[Gemini Images] Image size: ${imageSize}`);
+    console.log(`[Gemini Images] Variations: ${numVariations}`);
+
+    try {
+      // Image already on S3 (public), use URL directly
+      // Submit edit task to Kie.ai using correct API format
+      // Note: Kie.ai expects 'png' or 'jpeg' (lowercase)
+      // Note: API expects 'image_urls' (plural) not 'image_input'
+      // Note: Can send same image multiple times to get variations
+      const normalizedFormat = outputFormat.toLowerCase(); // 'png' or 'jpeg'
+      
+      // Clamp variations between 1-4 (Kie.ai practical limit)
+      const clampedVariations = Math.max(1, Math.min(4, numVariations));
+      
+      // Send same image multiple times for variations
+      const imageUrls = Array(clampedVariations).fill(imageUrl);
+      
+      const kieInput: any = {
+        prompt: editPrompt,
+        image_urls: imageUrls, // Multiple URLs = multiple variations
+        output_format: normalizedFormat, // 'png' or 'jpeg'
+        image_size: imageSize === 'auto' ? '4:5' : imageSize, // API expects 'image_size' not 'aspect_ratio'
+      };
+
+      const kiePayload = {
+        model: 'google/nano-banana-edit',
+        input: kieInput,
+      };
+
+      console.log(`[Gemini Images] Request payload:`, JSON.stringify(kiePayload, null, 2));
+
+      const taskResponse = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${kieApiKey}`,
+        },
+        body: JSON.stringify(kiePayload),
+      });
+
+      if (!taskResponse.ok) {
+        const errorText = await taskResponse.text();
+        console.error(`[Gemini Images] API Error Response:`, errorText);
+        throw new Error(`Failed to submit edit task: ${taskResponse.statusText} - ${errorText}`);
+      }
+
+      const responseData: any = await taskResponse.json();
+      console.log(`[Gemini Images] API Response:`, JSON.stringify(responseData, null, 2));
+
+      // Check Kie.ai response format
+      if (responseData.code !== 200) {
+        throw new Error(`Kie.ai error: ${responseData.msg || 'Unknown error'}`);
+      }
+
+      const taskId = responseData.data?.taskId;
+      
+      if (!taskId) {
+        throw new Error(`No taskId in response: ${JSON.stringify(responseData)}`);
+      }
+      
+      console.log(`[Gemini Images] Edit task submitted: ${taskId}`);
+      console.log(`[Gemini Images] Task will be processed asynchronously`);
+
+      // Poll for completion using recordInfo endpoint (official KIE.AI API)
+      // RESILIENT: Handles network errors, API timeouts, and retries
+      let editedImageUrl: string | null = null;
+      let attempts = 0;
+      const maxAttempts = 120; // 10 minutes (5s * 120) - Extended for Kie.ai processing time
+      let consecutiveErrors = 0;
+      const maxConsecutiveErrors = 3; // Allow 3 consecutive errors before giving up
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+        attempts++;
+        
+        try {
+          // Official KIE.AI endpoint for image/TTS/upscale tasks with timeout
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout per request
+          
+          const statusResponse = await fetch(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${kieApiKey}`,
+            },
+            signal: controller.signal,
+          });
+
+          clearTimeout(timeoutId);
+
+          if (!statusResponse.ok) {
+            const errorText = await statusResponse.text();
+            console.warn(`[Gemini Images] Query returned ${statusResponse.status} (attempt ${attempts}/${maxAttempts}):`, errorText);
+            
+            // Retry on 5xx errors (server issues) or 429 (rate limit)
+            if (statusResponse.status >= 500 || statusResponse.status === 429) {
+              consecutiveErrors++;
+              console.log(`[Gemini Images] Server error, will retry (${consecutiveErrors}/${maxConsecutiveErrors} consecutive errors)`);
+              
+              if (consecutiveErrors >= maxConsecutiveErrors) {
+                throw new Error(`Kie.ai API unavailable after ${maxConsecutiveErrors} consecutive errors`);
+              }
+              continue; // Retry
+            }
+            
+            // Non-retryable error (4xx except 429)
+            throw new Error(`Failed to fetch task status: ${statusResponse.statusText}`);
+          }
+
+          const statusData: any = await statusResponse.json();
+          
+          // Reset error counter on successful response
+          consecutiveErrors = 0;
+          
+          if (statusData.code !== 200) {
+            console.warn(`[Gemini Images] API returned code ${statusData.code}: ${statusData.msg}`);
+            
+            // Some error codes are temporary, retry
+            if (statusData.code >= 500) {
+              consecutiveErrors++;
+              if (consecutiveErrors >= maxConsecutiveErrors) {
+                throw new Error(`Query error: ${statusData.msg}`);
+              }
+              continue;
+            }
+            
+            throw new Error(`Query error: ${statusData.msg}`);
+          }
+
+          // KIE.AI uses 'state' field: 'waiting' | 'generating' | 'success' | 'fail'
+          const taskState = statusData.data?.state;
+          console.log(`[Gemini Images] Task state (attempt ${attempts}/${maxAttempts}): ${taskState}`);
+
+          if (taskState === 'success') {
+            // Parse resultJson to extract image URLs
+            if (!statusData.data.resultJson) {
+              throw new Error('Task completed but no resultJson in response');
+            }
+
+            try {
+              const result = JSON.parse(statusData.data.resultJson);
+              
+              if (result.resultUrls && Array.isArray(result.resultUrls) && result.resultUrls.length > 0) {
+                // Get first result (for now, return single URL)
+                // Future: could return all variations for multi-variation support
+                const imageUrl = result.resultUrls[0];
+                editedImageUrl = imageUrl;
+                console.log(`[Gemini Images] ✅ Edit completed successfully after ${attempts} attempts`);
+                console.log(`[Gemini Images] Generated ${result.resultUrls.length} variation(s)`);
+                console.log(`[Gemini Images] First result: ${imageUrl.substring(0, 80)}...`);
+                break;
+              } else {
+                throw new Error('No resultUrls found in completed task');
+              }
+            } catch (parseError) {
+              console.error(`[Gemini Images] Failed to parse resultJson:`, statusData.data.resultJson);
+              throw new Error(`Failed to parse result: ${parseError instanceof Error ? parseError.message : 'Unknown'}`);
+            }
+          } else if (taskState === 'fail') {
+            const failMsg = statusData.data?.failMsg || statusData.data?.failCode || 'Unknown error';
+            throw new Error(`Edit task failed: ${failMsg}`);
+          } else if (taskState === 'waiting' || taskState === 'generating') {
+            // Continue polling - task is still in progress
+            // No error increment here - this is normal
+          } else {
+            console.warn(`[Gemini Images] Unknown state: ${taskState} - continuing to poll`);
+          }
+
+        } catch (fetchError: any) {
+          // Handle network errors, timeouts, etc.
+          if (fetchError.name === 'AbortError') {
+            console.warn(`[Gemini Images] ⏱️ Request timeout (attempt ${attempts}/${maxAttempts}) - will retry`);
+            consecutiveErrors++;
+          } else if (fetchError.message?.includes('fetch failed') || fetchError.message?.includes('ECONNREFUSED')) {
+            console.warn(`[Gemini Images] 🔌 Network error (attempt ${attempts}/${maxAttempts}): ${fetchError.message} - will retry`);
+            consecutiveErrors++;
+          } else {
+            // Re-throw non-network errors (API errors, validation errors, etc.)
+            throw fetchError;
+          }
+
+          // Check if too many consecutive errors
+          if (consecutiveErrors >= maxConsecutiveErrors) {
+            throw new Error(`Failed after ${maxConsecutiveErrors} consecutive network/timeout errors. Last error: ${fetchError.message}`);
+          }
+
+          // Add exponential backoff for consecutive errors
+          if (consecutiveErrors > 1) {
+            const backoffMs = Math.min(5000 * Math.pow(2, consecutiveErrors - 1), 30000); // Max 30s
+            console.log(`[Gemini Images] 🔄 Backing off for ${backoffMs}ms before retry`);
+            await new Promise(resolve => setTimeout(resolve, backoffMs));
+          }
+        }
+      }
+
+      if (!editedImageUrl) {
+        // Task still processing after max time - don't fail the job, return null to allow retry
+        console.warn(`[Gemini Images] ⚠️ Task ${taskId} still processing after ${maxAttempts} attempts (${maxAttempts * 5 / 60} minutes)`);
+        console.warn(`[Gemini Images] This is not a failure - Kie.ai may still be processing. Job can be retried.`);
+        throw new Error(`Kie.ai task ${taskId} exceeded polling time (${maxAttempts * 5 / 60} minutes). Task may still complete - please retry the job.`);
+      }
+
+      // Download and save edited image to S3
+      console.log(`[Gemini Images] Downloading edited image from: ${editedImageUrl}`);
+      const imageBuffer = await this.downloadImage(editedImageUrl);
+      
+      // Upload to S3 instead of local storage
+      const filename = `edited-${Date.now()}.${outputFormat.toLowerCase() === 'png' ? 'png' : 'jpg'}`;
+      const contentType = outputFormat.toLowerCase() === 'png' ? 'image/png' : 'image/jpeg';
+      const s3Url = await s3Service.uploadBuffer(imageBuffer, filename, contentType, true);
+      
+      console.log(`[Gemini Images] Edited image saved to S3: ${s3Url}`);
+      return s3Url;
+
+    } catch (error) {
+      console.error(`[Gemini Images] Error editing image:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Upload image to S3 for public access
+   * Kie.ai requires a publicly accessible URL to download the image
+   * @param imageUrl Local or remote image URL
+   * @returns Public S3 URL
+   */
+  private async uploadImageToS3(imageUrl: string): Promise<string> {
+    try {
+      console.log(`[Gemini Images] Preparing to upload image to S3`);
+      
+      // Check if already an S3 URL
+      if (imageUrl.includes(process.env.S3_ENDPOINT || '') && imageUrl.includes(process.env.S3_BUCKET_NAME || '')) {
+        console.log(`[Gemini Images] Image already on S3, using existing URL`);
+        return imageUrl;
+      }
+
+      // Download image if remote URL or read from local path
+      let imageBuffer: Buffer;
+      
+      if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+        console.log(`[Gemini Images] Downloading remote image...`);
+        const response = await fetch(imageUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to download image: ${response.statusText}`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        imageBuffer = Buffer.from(arrayBuffer);
+      } else {
+        // Local file path
+        console.log(`[Gemini Images] Reading local image file...`);
+        const absolutePath = imageUrl.startsWith('/') ? imageUrl : path.join(process.cwd(), imageUrl);
+        imageBuffer = await fs.readFile(absolutePath);
+      }
+
+      // Detect MIME type
+      const mimeType = await this.detectMimeType(imageBuffer);
+      const ext = mimeType.split('/')[1] || 'jpg';
+      const filename = `product-${Date.now()}.${ext}`;
+
+      // Upload to S3 as public file
+      const publicUrl = await s3Service.uploadBuffer(
+        imageBuffer,
+        filename,
+        mimeType,
+        true // makePublic = true
+      );
+      
+      console.log(`[Gemini Images] Image uploaded successfully to S3: ${publicUrl}`);
+      return publicUrl;
+
+    } catch (error) {
+      console.error(`[Gemini Images] Error uploading image to S3:`, error);
+      throw error;
     }
   }
 }

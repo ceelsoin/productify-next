@@ -16,6 +16,7 @@ import {
   Video,
   FileText,
   Mic,
+  RefreshCcw,
 } from 'lucide-react';
 
 interface JobItem {
@@ -56,6 +57,7 @@ export default function JobPage() {
   const [error, setError] = useState('');
   const [regeneratingImages, setRegeneratingImages] = useState<Set<string>>(new Set());
   const [imageUrls, setImageUrls] = useState<Map<string, string>>(new Map());
+  const [retrying, setRetrying] = useState(false);
 
   const jobId = params.id as string;
 
@@ -215,6 +217,36 @@ export default function JobPage() {
         newSet.delete(key);
         return newSet;
       });
+    }
+  };
+
+  const handleRetryJob = async () => {
+    if (!confirm('Deseja tentar processar este trabalho novamente? Os créditos já foram devolvidos na falha original.')) {
+      return;
+    }
+
+    setRetrying(true);
+
+    try {
+      const response = await fetch('/api/jobs/retry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao tentar novamente');
+      }
+
+      // Começar polling imediatamente
+      fetchJob();
+    } catch (err) {
+      console.error('Erro ao retry:', err);
+      alert(err instanceof Error ? err.message : 'Erro ao tentar novamente');
+    } finally {
+      setRetrying(false);
     }
   };
 
@@ -519,6 +551,34 @@ export default function JobPage() {
               </div>
             </div>
 
+            {/* Retry Button for Failed Jobs */}
+            {job.status === 'failed' && (
+              <div className="rounded-2xl border border-border bg-background-tertiary p-6">
+                <h2 className="mb-4 text-xl font-semibold text-text-primary">
+                  Ações
+                </h2>
+                <button
+                  onClick={handleRetryJob}
+                  disabled={retrying}
+                  className="w-full rounded-lg bg-gradient-cta px-6 py-3 font-semibold text-white transition-all hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2"
+                >
+                  {retrying ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <span>Processando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCcw className="h-5 w-5" />
+                      <span>Tentar Novamente</span>
+                    </>
+                  )}
+                </button>
+                <p className="mt-3 text-xs text-text-tertiary text-center">
+                  Isso irá reprocessar apenas os itens que falharam
+                </p>
+              </div>
+            )}
            
           </div>
         </div>

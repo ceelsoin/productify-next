@@ -46,6 +46,16 @@ export interface EnhancedImagesConfig {
 }
 
 /**
+ * Configuration for image editing with Nano Banana Edit
+ */
+export interface ImageEditConfig {
+  imageUrl: string; // URL da imagem para editar
+  editPrompt: string; // Prompt de edição em linguagem natural
+  outputFormat?: 'PNG' | 'JPEG'; // Formato de saída (padrão: JPEG)
+  imageSize?: '1:1' | '9:16' | '16:9' | '3:4' | '4:3' | '2:3' | '3:2' | '5:4' | '4:5' | '21:9' | 'auto'; // Aspect ratio
+}
+
+/**
  * Configuration for promotional video
  */
 export interface PromotionalVideoConfig {

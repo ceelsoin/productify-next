@@ -10,44 +10,45 @@ import {
 import { storageService } from '../services/storage.service';
 import { mongoService } from '../services/mongodb.service';
 import { queueManager } from '../core/queue-manager';
-import { transcribe } from '@remotion/install-whisper-cpp';
-import { downloadWhisperModel } from '@remotion/install-whisper-cpp';
 import fs from 'fs/promises';
 import path from 'path';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 dotenv.config({ path: join(__dirname, '../../.env') });
 
 /**
  * Captions Generation Worker
- * Generates captions/subtitles using Whisper.cpp
+ * Generates captions/subtitles using OpenAI Whisper API
  */
 export class CaptionsWorker extends BaseWorker {
   queueName = 'captions-queue';
   concurrency = 2; // Process 2 jobs at a time
-  private whisperModelPath?: string;
+  private openai: any;
 
   constructor() {
     super();
-    this.initializeWhisperModel();
+    this.initializeOpenAI();
   }
 
   /**
-   * Initialize Whisper model (download if needed)
+   * Initialize OpenAI client
    */
-  private async initializeWhisperModel() {
+  private async initializeOpenAI() {
     try {
-      console.log('[CaptionsWorker] Initializing Whisper model...');
-      
-      // Download base model (ggml-base.bin - ~140MB)
-      const modelPath = await downloadWhisperModel({
-        model: 'base',
-        folder: join(process.cwd(), 'whisper-models'),
-      });
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) {
+        console.warn('[CaptionsWorker] OpenAI API key not configured. Captions will not work.');
+        return;
+      }
 
-      this.whisperModelPath = modelPath;
-      console.log('[CaptionsWorker] Whisper model ready:', modelPath);
+      const { default: OpenAI } = await import('openai');
+      this.openai = new OpenAI({ apiKey });
+      console.log('[CaptionsWorker] OpenAI client initialized');
     } catch (error) {
-      console.error('[CaptionsWorker] Failed to initialize Whisper model:', error);
+      console.error('[CaptionsWorker] Failed to initialize OpenAI client:', error);
     }
   }
 
@@ -61,15 +62,15 @@ export class CaptionsWorker extends BaseWorker {
     console.log(`[CaptionsWorker] Audio URL:`, captionsConfig.audioUrl);
 
     try {
-      if (!this.whisperModelPath) {
-        throw new Error('Whisper model not initialized');
+      if (!this.openai) {
+        throw new Error('OpenAI client not initialized. Set OPENAI_API_KEY environment variable.');
       }
 
       // Download audio file temporarily
       await this.updateProgress(jobId, itemIndex, 20);
       const audioPath = await this.downloadAudio(captionsConfig.audioUrl);
 
-      // Transcribe audio with Whisper
+      // Transcribe audio with Whisper API
       await this.updateProgress(jobId, itemIndex, 50);
       const transcription = await this.transcribeAudio(audioPath, captionsConfig);
 
@@ -130,36 +131,45 @@ export class CaptionsWorker extends BaseWorker {
   }
 
   /**
-   * Transcribe audio using Whisper.cpp
+   * Transcribe audio using OpenAI Whisper API
    */
   private async transcribeAudio(
     audioPath: string,
     config: CaptionsConfig
   ): Promise<any> {
-    console.log('[CaptionsWorker] Transcribing audio with Whisper...');
+    console.log('[CaptionsWorker] Transcribing audio with OpenAI Whisper API...');
 
-    if (!this.whisperModelPath) {
-      throw new Error('Whisper model not initialized');
+    try {
+      // Read audio file
+      const audioFile = await fs.readFile(audioPath);
+      const audioBlob = new Blob([audioFile], { type: 'audio/mpeg' });
+      
+      // Create a File object from the blob
+      const file = new File([audioBlob], path.basename(audioPath), { type: 'audio/mpeg' });
+
+      // Call OpenAI Whisper API with verbose_json response format
+      const response = await this.openai.audio.transcriptions.create({
+        file: file,
+        model: 'whisper-1',
+        language: config.language || 'pt',
+        response_format: 'verbose_json',
+        timestamp_granularities: ['word', 'segment'],
+      });
+
+      console.log('[CaptionsWorker] Transcription completed');
+      console.log('[CaptionsWorker] Segments:', response.segments?.length || 0);
+      return response;
+    } catch (error) {
+      console.error('[CaptionsWorker] Transcription error:', error);
+      throw error;
     }
-
-    const result = await transcribe({
-      inputPath: audioPath,
-      whisperPath: this.whisperModelPath,
-      model: 'base',
-      tokenLevelTimestamps: true, // For word-level timing
-    });
-
-    console.log('[CaptionsWorker] Transcription complete');
-    console.log('[CaptionsWorker] Segments:', result.transcription.length);
-
-    return result.transcription;
   }
 
   /**
    * Save captions in requested format
    */
   private async saveCaptions(
-    transcription: any[],
+    transcription: any,
     format: string
   ): Promise<string> {
     const filename = storageService.generateFilename(format);
@@ -168,9 +178,9 @@ export class CaptionsWorker extends BaseWorker {
     let content: string;
 
     if (format === 'srt') {
-      content = this.formatSRT(transcription);
+      content = this.formatSRT(transcription.segments || []);
     } else if (format === 'vtt') {
-      content = this.formatVTT(transcription);
+      content = this.formatVTT(transcription.segments || []);
     } else {
       // JSON format (for Remotion)
       content = JSON.stringify(transcription, null, 2);
@@ -185,11 +195,11 @@ export class CaptionsWorker extends BaseWorker {
   /**
    * Format transcription as SRT
    */
-  private formatSRT(transcription: any[]): string {
-    return transcription
+  private formatSRT(segments: any[]): string {
+    return segments
       .map((segment, index) => {
-        const start = this.formatTimestamp(segment.timestamps.from);
-        const end = this.formatTimestamp(segment.timestamps.to);
+        const start = this.formatTimestamp(segment.start);
+        const end = this.formatTimestamp(segment.end);
         return `${index + 1}\n${start} --> ${end}\n${segment.text.trim()}\n`;
       })
       .join('\n');
@@ -198,12 +208,12 @@ export class CaptionsWorker extends BaseWorker {
   /**
    * Format transcription as WebVTT
    */
-  private formatVTT(transcription: any[]): string {
+  private formatVTT(segments: any[]): string {
     const header = 'WEBVTT\n\n';
-    const content = transcription
+    const content = segments
       .map((segment) => {
-        const start = this.formatTimestamp(segment.timestamps.from);
-        const end = this.formatTimestamp(segment.timestamps.to);
+        const start = this.formatTimestamp(segment.start);
+        const end = this.formatTimestamp(segment.end);
         return `${start} --> ${end}\n${segment.text.trim()}\n`;
       })
       .join('\n');
