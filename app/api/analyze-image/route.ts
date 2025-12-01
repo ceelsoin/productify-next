@@ -50,25 +50,46 @@ export async function POST(request: NextRequest) {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
 
-    const prompt = `Analyze this product image and provide detailed information in JSON format.
+    const prompt = `Analise esta imagem de produto e forneça informações detalhadas em JSON.
 
-Your response MUST be a valid JSON object with these exact fields:
+Sua resposta DEVE ser um objeto JSON válido com estes campos exatos:
 {
-  "productName": "Clear, descriptive product name (3-7 words)",
-  "seoTitle": "SEO-optimized title with relevant keywords (50-60 characters)",
-  "briefDescription": "Brief description highlighting key features and benefits (2-3 sentences, 40-80 words)",
-  "category": "Product category (e.g., electronics, home decor, fashion, accessories, toys, etc.)",
-  "suggestedKeywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"]
+  "productName": "Nome descritivo do produto (3-7 palavras em português)",
+  "seoTitle": "Título otimizado para SEO (50-60 caracteres em português)",
+  "briefDescription": "Descrição breve destacando características e benefícios (2-3 frases, 40-80 palavras em português)",
+  "category": "Categoria do produto (ex: eletrônicos, decoração, moda, acessórios, brinquedos, etc.)",
+  "suggestedKeywords": ["palavra-chave1", "palavra-chave2", "palavra-chave3", "palavra-chave4", "palavra-chave5"]
 }
 
-Guidelines:
-- productName: Be specific and descriptive (e.g., "Chaveiro de Parede Hot Wheels Miniatura" not just "Chaveiro")
-- seoTitle: Include brand, product type, and key feature
-- briefDescription: Focus on what makes the product unique and desirable
-- category: Choose from common e-commerce categories
-- suggestedKeywords: 5 relevant keywords for SEO
+REGRAS IMPORTANTES:
+1. FOQUE NO PRODUTO PRINCIPAL, não em marcas, logos ou decorações que aparecem nele
+   - ✅ CORRETO: "Chaveiro de Parede Estilo Garagem para Miniaturas"
+   - ❌ ERRADO: "Chaveiro Audi TT" (foco na decoração, não no produto)
 
-Return ONLY the JSON object, no additional text.`;
+2. Use PORTUGUÊS BRASILEIRO em todos os campos
+
+3. Seja GENÉRICO quando o produto é um acessório/suporte:
+   - Se é um chaveiro decorado com carro → "Chaveiro de Parede para Miniaturas"
+   - Se é uma capa de celular com personagem → "Capa de Celular Protetora"
+   - Se é uma caneca com logo → "Caneca Personalizada"
+
+4. Use MARCA/ESPECÍFICO apenas quando o produto EM SI é da marca:
+   - Tênis Nike → pode usar "Nike" pois o produto é Nike
+   - iPhone → pode usar "iPhone" pois o produto é Apple
+   - Relógio Rolex → pode usar "Rolex" pois o produto é Rolex
+
+5. productName: Seja específico sobre o TIPO de produto e seu uso
+   - Exemplo: "Chaveiro de Parede Estilo Garagem", "Porta-Chaves Decorativo para Miniaturas"
+
+6. seoTitle: Inclua tipo do produto, material/estilo, e uso
+   - Exemplo: "Chaveiro de Parede Decorativo - Estilo Garagem para Miniaturas"
+
+7. briefDescription: Foque em características físicas, utilidade e apelo decorativo do PRODUTO
+   - Não mencione marcas de decoração, apenas o produto em si
+
+8. suggestedKeywords: 5 palavras-chave relevantes em português para SEO
+
+Retorne APENAS o objeto JSON, sem texto adicional.`;
 
     // Enviar para Gemini
     const result = await model.generateContent([

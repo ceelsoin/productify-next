@@ -54,6 +54,7 @@ export default function JobPage() {
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [regeneratingImages, setRegeneratingImages] = useState<Set<string>>(new Set());
 
   const jobId = params.id as string;
 
@@ -157,6 +158,37 @@ export default function JobPage() {
         return 'text-blue-400';
       default:
         return 'text-yellow-400';
+    }
+  };
+
+  const handleRegenerateImage = async (itemIndex: number, imageIndex: number) => {
+    const key = `${itemIndex}-${imageIndex}`;
+    setRegeneratingImages(prev => new Set(prev).add(key));
+
+    try {
+      const response = await fetch('/api/jobs/regenerate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId, itemIndex, imageIndex }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Erro ao regenerar imagem');
+      }
+
+      // Aguardar um pouco e começar a fazer polling
+      setTimeout(() => {
+        fetchJob();
+      }, 2000);
+    } catch (err) {
+      console.error('Erro ao regenerar:', err);
+      alert(err instanceof Error ? err.message : 'Erro ao regenerar imagem');
+      setRegeneratingImages(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(key);
+        return newSet;
+      });
     }
   };
 
@@ -300,29 +332,82 @@ export default function JobPage() {
                         <div className="mt-3 border-t border-border pt-3">
                           {item.result.images && item.result.images.length > 0 && (
                             <div className="space-y-3">
-                              <p className="text-sm font-medium text-text-secondary">
-                                Imagens geradas: {item.result.count || item.result.images.length}
-                              </p>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {item.result.images.map((imageUrl, i) => (
-                                  <div
-                                    key={i}
-                                    className="group relative overflow-hidden rounded-lg border border-border bg-background-secondary aspect-square"
-                                  >
-                                    <img
-                                      src={imageUrl}
-                                      alt={`Enhanced ${i + 1}`}
-                                      className="h-full w-full object-contain transition-transform group-hover:scale-105"
-                                    />
-                                    <a
-                                      href={imageUrl}
-                                      download
-                                      className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100"
-                                    >
-                                      <Download className="h-6 w-6 text-white" />
-                                    </a>
+                              <div className="flex items-center justify-between">
+                                <p className="text-sm font-medium text-text-secondary">
+                                  Imagens geradas: {item.result.images.length}/4
+                                </p>
+                                {item.result.images.length < 4 && (job.status === 'processing' || job.status === 'pending') && (
+                                  <div className="flex items-center gap-2 text-xs text-primary-400">
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                    <span>Gerando imagens...</span>
                                   </div>
-                                ))}
+                                )}
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {item.result.images.map((imageUrl, i) => {
+                                  const regenerateKey = `${index}-${i}`;
+                                  const isRegenerating = regeneratingImages.has(regenerateKey);
+                                  
+                                  return (
+                                    <div
+                                      key={i}
+                                      className="group relative overflow-hidden rounded-lg border border-border bg-background-secondary aspect-square animate-fadeIn"
+                                      style={{
+                                        animationDelay: `${i * 150}ms`,
+                                        animationFillMode: 'backwards'
+                                      }}
+                                    >
+                                      {isRegenerating ? (
+                                        <div className="flex h-full items-center justify-center">
+                                          <div className="text-center">
+                                            <Loader2 className="mx-auto mb-2 h-8 w-8 animate-spin text-primary-400" />
+                                            <p className="text-xs text-text-tertiary">Regerando...</p>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <>
+                                          <img
+                                            src={imageUrl}
+                                            alt={`Enhanced ${i + 1}`}
+                                            className="h-full w-full object-contain transition-transform group-hover:scale-105"
+                                          />
+                                          <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                                            <a
+                                              href={imageUrl}
+                                              download
+                                              className="rounded-lg bg-primary-500 p-2 text-white transition-transform hover:scale-110"
+                                              onClick={(e) => e.stopPropagation()}
+                                            >
+                                              <Download className="h-5 w-5" />
+                                            </a>
+                                            <button
+                                              onClick={() => handleRegenerateImage(index, i)}
+                                              className="rounded-lg bg-background p-2 text-text-primary transition-transform hover:scale-110"
+                                              title="Refazer esta imagem"
+                                            >
+                                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                                              </svg>
+                                            </button>
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                                {/* Placeholder para imagens que estão sendo geradas */}
+                                {(job.status === 'processing' || job.status === 'pending') && item.result.images.length < 4 && 
+                                  Array.from({ length: 4 - item.result.images.length }).map((_, i) => (
+                                    <div
+                                      key={`placeholder-${i}`}
+                                      className="relative overflow-hidden rounded-lg border border-dashed border-border bg-background-secondary aspect-square"
+                                    >
+                                      <div className="flex h-full items-center justify-center">
+                                        <Loader2 className="h-8 w-8 animate-spin text-primary-400/50" />
+                                      </div>
+                                    </div>
+                                  ))
+                                }
                               </div>
                             </div>
                           )}

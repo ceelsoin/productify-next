@@ -83,19 +83,25 @@ class PipelineOrchestrator {
    * Create a dynamic pipeline based on job items and their dependencies
    */
   private createDynamicPipeline(items: any[]): Pipeline {
-    // Import dependencies dynamically
-    const JOB_DEPENDENCIES: Record<string, string[]> = {
+    // Define possible dependencies (não obrigatórias)
+    const POSSIBLE_DEPENDENCIES: Record<string, string[]> = {
       'enhanced-images': [],
       'viral-copy': [],
       'product-description': [],
-      'voice-over': ['viral-copy'],
+      'voice-over': ['viral-copy', 'product-description'], // Pode usar qualquer texto gerado
       'captions': ['voice-over'],
       'promotional-video': ['enhanced-images'],
     };
 
+    // Criar conjunto de tipos presentes no job
+    const availableTypes = new Set(items.map((item: any) => item.type));
+
     const steps = items.map((item: any) => {
       const itemType = item.type as JobType;
-      const dependencies = JOB_DEPENDENCIES[item.type] || [];
+      const possibleDeps = POSSIBLE_DEPENDENCIES[item.type] || [];
+      
+      // Filtrar apenas dependências que existem no job atual
+      const dependencies = possibleDeps.filter(dep => availableTypes.has(dep));
 
       return {
         type: itemType,
@@ -116,7 +122,7 @@ class PipelineOrchestrator {
     });
 
     return {
-      name: 'Dynamic Pipeline',
+      name: `Dynamic Pipeline (${items.map(i => i.type).join('+')})`,
       description: 'Automatically generated pipeline based on selected items',
       steps,
     };

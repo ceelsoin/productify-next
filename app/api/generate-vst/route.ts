@@ -85,9 +85,26 @@ Return ONLY the JSON object.`;
       );
     }
 
-    const narratives = JSON.parse(jsonMatch[0]);
-    console.log('[generate-vst] Narrativas geradas com sucesso');
+    const rawNarratives = JSON.parse(jsonMatch[0]);
+    console.log('[generate-vst] Narrativas parseadas:', rawNarratives);
 
+    // Extrair apenas o texto do voiceover se vier em formato aninhado
+    const narratives = {
+      hookViral: typeof rawNarratives.hookViral === 'object' && rawNarratives.hookViral.voiceover 
+        ? rawNarratives.hookViral.voiceover 
+        : rawNarratives.hookViral,
+      reviewSincero: typeof rawNarratives.reviewSincero === 'object' && rawNarratives.reviewSincero.voiceover
+        ? rawNarratives.reviewSincero.voiceover
+        : rawNarratives.reviewSincero,
+      lifestyleSolution: typeof rawNarratives.lifestyleSolution === 'object' && rawNarratives.lifestyleSolution.voiceover
+        ? rawNarratives.lifestyleSolution.voiceover
+        : rawNarratives.lifestyleSolution,
+      premiumQuality: typeof rawNarratives.premiumQuality === 'object' && rawNarratives.premiumQuality.voiceover
+        ? rawNarratives.premiumQuality.voiceover
+        : rawNarratives.premiumQuality,
+    };
+
+    console.log('[generate-vst] Narrativas extraídas com sucesso');
     return NextResponse.json({ narratives });
   } catch (error) {
     console.error('[generate-vst] Erro:', error);
