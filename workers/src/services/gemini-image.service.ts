@@ -84,7 +84,7 @@ class GeminiImageService {
           const response = await result.response;
           const imageData = response.candidates?.[0]?.content?.parts?.[0];
 
-          if (imageData && 'inlineData' in imageData) {
+          if (imageData && 'inlineData' in imageData && imageData.inlineData) {
             // Save the generated image
             const savedUrl = await this.saveGeneratedImage(
               Buffer.from(imageData.inlineData.data, 'base64'),
